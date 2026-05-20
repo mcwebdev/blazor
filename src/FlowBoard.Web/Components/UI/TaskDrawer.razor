@@ -8,45 +8,70 @@
     @if (Task != null)
     {
         <div class="drawer-header">
-            <h3>Edit Task</h3>
-            <button type="button" class="close-btn" @onclick="Close">✕</button>
+            <h3>@(IsCreateMode ? "New Task" : "Edit Task")</h3>
+            <button type="button" class="close-btn" @onclick="Close">x</button>
         </div>
         <div class="drawer-body">
+            @if (!string.IsNullOrWhiteSpace(ValidationMessage))
+            {
+                <div class="alert-danger">@ValidationMessage</div>
+            }
+
             <div class="form-group">
-                <label>Title</label>
-                <input type="text" class="form-control" @bind="Task.Title" />
+                <label for="task-title-input">Title</label>
+                <input id="task-title-input" name="task-title" type="text" class="form-control" @bind="Task.Title" />
             </div>
-            
+
             <div class="form-group">
-                <label>Description</label>
-                <textarea class="form-control" rows="4" @bind="Task.Description"></textarea>
+                <label for="task-description-input">Description</label>
+                <textarea id="task-description-input" name="task-description" class="form-control" rows="4" @bind="Task.Description"></textarea>
             </div>
-            
+
             <div class="form-row">
                 <div class="form-group">
-                    <label>Priority</label>
-                    <select class="form-control" @bind="Task.Priority">
+                    <label for="task-priority-input">Priority</label>
+                    <select id="task-priority-input" name="task-priority" class="form-control" @bind="Task.Priority">
                         @foreach (var priority in Enum.GetValues<TaskPriority>())
                         {
                             <option value="@priority">@priority</option>
                         }
                     </select>
                 </div>
-                
+
                 <div class="form-group">
-                    <label>Status</label>
-                    <select class="form-control" @bind="Task.Status">
-                        @foreach (var status in Enum.GetValues<TaskItemStatus>())
+                    <label for="task-status-input">Status</label>
+                    <select id="task-status-input" name="task-status" class="form-control" @bind="Task.Status">
+                        @foreach (var status in AvailableStatuses)
                         {
-                            <option value="@status">@status</option>
+                            <option value="@status">@FormatStatus(status)</option>
                         }
                     </select>
                 </div>
             </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="task-assignee-input">Assignee</label>
+                    <select id="task-assignee-input" name="task-assignee" class="form-control" @bind="Task.AssigneeUserId">
+                        <option value="">Unassigned</option>
+                        @foreach (var member in BoardMembers)
+                        {
+                            <option value="@member.UserId">@member.DisplayName</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="task-due-date-input">Due date</label>
+                    <input id="task-due-date-input" name="task-due-date" type="date" class="form-control" @bind="Task.DueDateUtc" @bind:format="yyyy-MM-dd" />
+                </div>
+            </div>
         </div>
         <div class="drawer-footer">
-            <button class="btn btn-secondary" @onclick="Close">Cancel</button>
-            <button class="btn btn-primary" @onclick="SaveAsync">Save Changes</button>
+            <button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@IsSaving">
+                @(IsSaving ? "Saving..." : IsCreateMode ? "Create Task" : "Save Changes")
+            </button>
         </div>
     }
     else if (IsLoading)
@@ -59,20 +84,61 @@
 
 @code {
     [Parameter]
-    public EventCallback OnTaskSaved { get; set; }
+    public EventCallback<TaskDrawerSavedArgs> OnTaskSaved { get; set; }
 
     public bool IsOpen { get; private set; }
     public TaskDetailDto? Task { get; private set; }
-    private bool IsLoading = false;
+    private IReadOnlyList<BoardMemberDto> BoardMembers = [];
+    private bool IsCreateMode;
+    private bool IsLoading;
+    private bool IsSaving;
+    private string? ValidationMessage;
+
+    private static readonly TaskItemStatus[] AvailableStatuses =
+    [
+        TaskItemStatus.Open,
+        TaskItemStatus.InProgress,
+        TaskItemStatus.InReview,
+        TaskItemStatus.Done
+    ];
 
     public async Task OpenAsync(Guid taskId)
     {
         IsOpen = true;
         IsLoading = true;
+        IsCreateMode = false;
+        ValidationMessage = null;
         Task = null;
+        BoardMembers = [];
         StateHasChanged();
 
         Task = await BoardService.GetTaskAsync(taskId);
+        BoardMembers = Task is null
+            ? []
+            : await BoardService.GetBoardMembersAsync(Task.BoardId);
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    public async Task OpenForCreateAsync(Guid boardId)
+    {
+        IsOpen = true;
+        IsCreateMode = true;
+        IsLoading = true;
+        ValidationMessage = null;
+        Task = null;
+        BoardMembers = [];
+        StateHasChanged();
+
+        BoardMembers = await BoardService.GetBoardMembersAsync(boardId);
+        Task = new TaskDetailDto
+        {
+            BoardId = boardId,
+            Title = string.Empty,
+            Priority = TaskPriority.Medium,
+            Status = TaskItemStatus.Open
+        };
+
         IsLoading = false;
         StateHasChanged();
     }
@@ -81,16 +147,74 @@
     {
         IsOpen = false;
         Task = null;
+        IsCreateMode = false;
+        IsSaving = false;
+        ValidationMessage = null;
         StateHasChanged();
     }
 
     private async Task SaveAsync()
     {
-        if (Task != null)
+        if (Task is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(Task.Title))
         {
-            await BoardService.UpdateTaskAsync(Task);
-            await OnTaskSaved.InvokeAsync();
+            ValidationMessage = "Task title is required.";
+            return;
+        }
+
+        IsSaving = true;
+        ValidationMessage = null;
+
+        try
+        {
+            if (IsCreateMode)
+            {
+                var created = await BoardService.CreateTaskAsync(new CreateTaskDto
+                {
+                    BoardId = Task.BoardId,
+                    Title = Task.Title,
+                    Description = Task.Description,
+                    Priority = Task.Priority,
+                    Status = Task.Status,
+                    AssigneeUserId = Task.AssigneeUserId,
+                    DueDateUtc = Task.DueDateUtc
+                });
+
+                await OnTaskSaved.InvokeAsync(new TaskDrawerSavedArgs(
+                    "TaskCreated",
+                    $"Created {created.Title}."));
+            }
+            else
+            {
+                await BoardService.UpdateTaskAsync(Task);
+                await OnTaskSaved.InvokeAsync(new TaskDrawerSavedArgs(
+                    "TaskUpdated",
+                    $"Updated {Task.Title.Trim()}."));
+            }
+
             Close();
         }
+        catch (InvalidOperationException ex)
+        {
+            ValidationMessage = ex.Message;
+            IsSaving = false;
+        }
+        catch
+        {
+            ValidationMessage = "Could not save the task. Try again.";
+            IsSaving = false;
+        }
+    }
+
+    private static string FormatStatus(TaskItemStatus status)
+    {
+        return status switch
+        {
+            TaskItemStatus.InProgress => "In progress",
+            TaskItemStatus.InReview => "In review",
+            _ => status.ToString()
+        };
     }
 }

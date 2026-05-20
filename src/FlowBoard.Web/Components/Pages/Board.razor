@@ -1,10 +1,15 @@
 @page "/boards/{BoardId}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Infrastructure.Data
+@using FlowBoard.Web.Hubs
+@using FlowBoard.Web.Services
 @inject IBoardService BoardService
+@inject BoardUpdateNotifier BoardUpdates
+@inject AppActionDispatcher AppActions
 
 <PageTitle>@(BoardData?.Name ?? "Board") - FlowBoard</PageTitle>
 
@@ -36,51 +41,90 @@ else
                 <p style="margin: 0; color: #65717a; font-size: 0.9rem;">@BoardData.Description</p>
             }
         </div>
-        <div>
+        <div class="board-header-actions">
+            <span class="board-live-badge">@LiveStatusText</span>
             <button type="button" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Board Settings</button>
         </div>
     </div>
 
-    <div class="kanban-preview" style="padding-top: 1rem; flex-grow: 1; min-height: 500px;">
-        @foreach (var col in BoardData.Columns.OrderBy(c => c.SortOrder))
-        {
-            <div class="kanban-column" 
-                 ondragover="event.preventDefault();"
-                 @ondrop="() => HandleDropAsync(col.Id)">
-                <header>
-                    <h3>@col.Name</h3>
-                    <span>@col.Tasks.Count</span>
-                </header>
-                
-                @foreach (var task in col.Tasks.OrderBy(t => t.SortOrder))
-                {
-                    <div class="task-card" draggable="true" 
-                         @ondragstart="() => HandleDragStart(task)"
-                         @onclick="() => OpenTaskDrawer(task.Id)">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                            <span class="priority @task.Priority.ToString().ToLower()">@task.Priority</span>
-                            @if (!string.IsNullOrEmpty(task.AssigneeName))
-                            {
-                                <span class="user-avatar" style="display: inline-flex; width: 24px; height: 24px; font-size: 0.65rem; background: #e2e8f0; border-radius: 50%; align-items: center; justify-content: center; font-weight: bold; color: #475569;" title="@task.AssigneeName">
-                                    @(task.AssigneeName.Substring(0, 2).ToUpper())
-                                </span>
-                            }
-                        </div>
-                        <h4>@task.Title</h4>
-                        <div style="display: flex; justify-content: space-between; margin-top: 0.75rem; font-size: 0.8rem; color: #65717a; font-weight: 600;">
-                            <span>@(task.CommentCount > 0 ? $"💬 {task.CommentCount}" : "")</span>
-                            @if (task.ChecklistTotalCount > 0)
-                            {
-                                <span>☑️ @task.ChecklistCompleteCount/@task.ChecklistTotalCount</span>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-    </div>
+    <section class="board-workspace">
+        <div class="kanban-preview board-kanban">
+            @foreach (var col in BoardData.Columns.OrderBy(c => c.SortOrder))
+            {
+                <div class="kanban-column"
+                     ondragover="event.preventDefault();"
+                     @ondrop="() => HandleDropAsync(col.Id)">
+                    <header>
+                        <h3>@col.Name</h3>
+                        <span>@col.Tasks.Count</span>
+                    </header>
 
-    <TaskDrawer @ref="taskDrawer" OnTaskSaved="LoadBoardDataAsync" />
+                    @foreach (var task in col.Tasks.OrderBy(t => t.SortOrder))
+                    {
+                        <div class="task-card" draggable="true"
+                             @ondragstart="() => HandleDragStart(task)"
+                             @onclick="() => OpenTaskDrawer(task.Id)">
+                            <div class="task-card-meta">
+                                <span class="priority @task.Priority.ToString().ToLower()">@task.Priority</span>
+                                @if (!string.IsNullOrEmpty(task.AssigneeName))
+                                {
+                                    <span class="user-avatar compact" title="@task.AssigneeName">
+                                        @GetInitials(task.AssigneeName)
+                                    </span>
+                                }
+                            </div>
+                            <h4>@task.Title</h4>
+                            <div class="task-card-footer">
+                                @if (task.DueDateUtc is not null)
+                                {
+                                    <span class="task-due @(task.DueDateUtc.Value < DateTime.UtcNow && task.Status != FlowBoard.Domain.Enums.TaskItemStatus.Done ? "overdue" : "")">
+                                        Due @FormatTaskDate(task.DueDateUtc.Value)
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>@(task.CommentCount > 0 ? $"Comments {task.CommentCount}" : "")</span>
+                                }
+                                @if (task.ChecklistTotalCount > 0)
+                                {
+                                    <span>Checklist @task.ChecklistCompleteCount/@task.ChecklistTotalCount</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <aside class="board-activity-panel" aria-label="Board activity">
+            <header>
+                <p class="eyebrow">Live activity</p>
+                <h3>Board pulse</h3>
+            </header>
+
+            @if (RecentActivity.Count == 0)
+            {
+                <p class="activity-empty">No activity recorded yet.</p>
+            }
+            else
+            {
+                <ol class="board-activity-list">
+                    @foreach (var activity in RecentActivity)
+                    {
+                        <li @key="activity.Id">
+                            <span class="activity-avatar">@GetInitials(activity.ActorName)</span>
+                            <div>
+                                <p>@activity.Summary</p>
+                                <small>@activity.ActorName - @FormatRelativeTime(activity.CreatedAtUtc)</small>
+                            </div>
+                        </li>
+                    }
+                </ol>
+            }
+        </aside>
+    </section>
+
+    <TaskDrawer @ref="taskDrawer" OnTaskSaved="HandleTaskSavedAsync" />
 }
 
 @code {
@@ -88,13 +132,17 @@ else
     public string BoardId { get; set; } = string.Empty;
 
     private BoardDto? BoardData;
+    private IReadOnlyList<ActivityEntryDto> RecentActivity = [];
     private bool IsLoading = true;
+    private string LiveStatusText = "Live sync ready";
     
     private TaskCardDto? DraggedTask;
     private TaskDrawer? taskDrawer;
 
     protected override async Task OnInitializedAsync()
     {
+        BoardUpdates.BoardChanged += HandleBoardChangedAsync;
+        AppActions.NewTaskRequested += OpenCreateTaskDrawerAsync;
         await LoadBoardDataAsync();
     }
 
@@ -112,6 +160,10 @@ else
             BoardData = await BoardService.GetBoardAsync(id);
         }
 
+        RecentActivity = BoardData is null
+            ? []
+            : await BoardService.GetRecentActivityForBoardAsync(BoardData.Id);
+
         IsLoading = false;
     }
     
@@ -122,19 +174,19 @@ else
 
     private async Task HandleDropAsync(Guid targetColumnId)
     {
-        if (DraggedTask == null || DraggedTask.Status.ToString() == targetColumnId.ToString())
-            return; // Wait, we don't have column id on task. Let's just update via backend.
+        if (BoardData is null || DraggedTask is null || DraggedTask.ColumnId == targetColumnId)
+            return;
 
-        // In a full implementation, calculate newSortOrder based on drop position
-        int newSortOrder = 0;
-        
-        // Call backend to move task
-        await BoardService.MoveTaskAsync(DraggedTask.Id, targetColumnId, newSortOrder);
-        
+        var targetColumn = BoardData.Columns.FirstOrDefault(c => c.Id == targetColumnId);
+        if (targetColumn is null)
+            return;
+
+        await BoardService.MoveTaskAsync(DraggedTask.Id, targetColumnId, -1);
+
+        var summary = $"Moved {DraggedTask.Title} to {targetColumn.Name}.";
         DraggedTask = null;
-        
-        // Reload board data
         await LoadBoardDataAsync();
+        await NotifyBoardChangedAsync("TaskMoved", summary);
     }
 
     private async Task OpenTaskDrawer(Guid taskId)
@@ -143,5 +195,87 @@ else
         {
             await taskDrawer.OpenAsync(taskId);
         }
+    }
+
+    private async Task OpenCreateTaskDrawerAsync()
+    {
+        if (taskDrawer is not null && BoardData is not null)
+        {
+            await taskDrawer.OpenForCreateAsync(BoardData.Id);
+        }
+    }
+
+    private async Task HandleTaskSavedAsync(TaskDrawerSavedArgs args)
+    {
+        await LoadBoardDataAsync();
+        await NotifyBoardChangedAsync(args.EventType, args.Summary);
+    }
+
+    private Task NotifyBoardChangedAsync(string eventType, string summary)
+    {
+        if (BoardData is null)
+            return Task.CompletedTask;
+
+        LiveStatusText = summary;
+        return BoardUpdates.NotifyBoardChangedAsync(new BoardRealtimeEvent(
+            BoardData.Id,
+            eventType,
+            summary,
+            DateTime.UtcNow));
+    }
+
+    private Task HandleBoardChangedAsync(BoardRealtimeEvent change)
+    {
+        if (BoardData is null || change.BoardId != BoardData.Id)
+            return Task.CompletedTask;
+
+        return InvokeAsync(async () =>
+        {
+            LiveStatusText = change.Summary;
+            await LoadBoardDataAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static string GetInitials(string value)
+    {
+        var parts = value
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .Select(part => part[0].ToString().ToUpperInvariant())
+            .ToArray();
+
+        return parts.Length == 0 ? "?" : string.Concat(parts);
+    }
+
+    private static string FormatRelativeTime(DateTime createdAtUtc)
+    {
+        var timestamp = createdAtUtc.Kind == DateTimeKind.Utc
+            ? createdAtUtc
+            : DateTime.SpecifyKind(createdAtUtc, DateTimeKind.Utc);
+        var elapsed = DateTime.UtcNow - timestamp;
+
+        if (elapsed < TimeSpan.FromMinutes(1))
+            return "just now";
+
+        if (elapsed < TimeSpan.FromHours(1))
+            return $"{Math.Max(1, (int)elapsed.TotalMinutes)}m ago";
+
+        if (elapsed < TimeSpan.FromDays(1))
+            return $"{Math.Max(1, (int)elapsed.TotalHours)}h ago";
+
+        return $"{Math.Max(1, (int)elapsed.TotalDays)}d ago";
+    }
+
+    private static string FormatTaskDate(DateTime dueDateUtc)
+    {
+        return dueDateUtc.ToString("MMM d");
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        BoardUpdates.BoardChanged -= HandleBoardChangedAsync;
+        AppActions.NewTaskRequested -= OpenCreateTaskDrawerAsync;
+        return ValueTask.CompletedTask;
     }
 }

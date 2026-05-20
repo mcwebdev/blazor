@@ -1,0 +1,5 @@
+@rendermode InteractiveServer
+@using FlowBoard.Web.Services
+@inject AppActionDispatcher AppActions
+
+<button type="button" class="primary-action" @onclick="AppActions.RequestNewTaskAsync">New task</button>

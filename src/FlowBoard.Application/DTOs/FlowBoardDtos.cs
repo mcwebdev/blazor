@@ -4,6 +4,7 @@ namespace FlowBoard.Application.DTOs;
 
 public sealed record TaskCardDto(
     Guid Id,
+    Guid ColumnId,
     string Title,
     TaskPriority Priority,
     TaskItemStatus Status,
@@ -57,6 +58,21 @@ public class TaskDetailDto
         RowVersion = rowVersion;
     }
 }
+
+public class CreateTaskDto
+{
+    public Guid BoardId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public TaskPriority Priority { get; set; } = TaskPriority.Medium;
+    public TaskItemStatus Status { get; set; } = TaskItemStatus.Open;
+    public string? AssigneeUserId { get; set; }
+    public DateTime? DueDateUtc { get; set; }
+}
+
+public sealed record BoardMemberDto(
+    string UserId,
+    string DisplayName);
 
 public sealed record BoardColumnDto(
     Guid Id,

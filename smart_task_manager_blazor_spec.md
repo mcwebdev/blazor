@@ -201,11 +201,14 @@ Clicking a card opens a detail panel with:
 
 - Editable fields
 - Assignee selector
+- Due-date editor with date-only display semantics
 - Labels/tags
 - Checklist items
 - Comments
 - Activity history
 - Attachments placeholder or simple file metadata
+
+The app-shell `New task` action should open the same drawer in create mode when the current route has an active board context. Task creation must validate title, select the correct board column from status, persist assignee and due date, record activity, and refresh connected board views.
 
 ### Implementation Focus
 
@@ -466,6 +469,8 @@ Analytics should be interactive, not just decorative:
 The app should make connection state visible and recover gracefully:
 
 - Show a compact connection badge: connected, reconnecting, offline, or sync pending.
+- Show app-shell status chips in the sidebar for environment/runtime signals such as Cloud Run, Firebase Hosting, and database readiness.
+- Treat sidebar status chips as operational indicators, not as a replacement for board-level SignalR connection state.
 - Retry SignalR connection with exponential backoff.
 - Save unsent task and comment drafts in local storage.
 - Queue pending client actions with idempotency keys.
@@ -476,6 +481,7 @@ The app should make connection state visible and recover gracefully:
 ### Implementation Focus
 
 - SignalR lifecycle handling
+- Runtime health projection for shell-level status chips
 - Idempotent command processing
 - Local storage interop
 - Pending action queue
@@ -579,6 +585,7 @@ Add a rules-based “Focus Suggestions” panel:
 - `SidebarNav`
 - `TopBar`
 - `WorkspaceSwitcher`
+- `SidebarStatusChips`
 - `NotificationBell`
 - `ThemeToggle`
 
@@ -991,6 +998,12 @@ public interface IBoardClient
 
 SignalR groups prevent broadcasting every board update to every connected user. Only users currently viewing the board receive board updates.
 
+### MVP Implementation Note
+
+The first Cloud Run demo can use an in-process `BoardUpdateNotifier` to refresh active Blazor Server circuits and an `IHubContext<BoardHub>` broadcast for board activity events. This is acceptable while Cloud Run is capped at `max-instances=1`; scaling beyond one instance requires Redis, Memorystore, or another fan-out/backplane strategy so every instance receives board events.
+
+The board should also surface a compact activity panel that shows the latest persisted activity log entries. This gives moves and edits an immediate visible trace and becomes the foundation for replay mode.
+
 ---
 
 ## 11. State Management Strategy
@@ -1027,6 +1040,7 @@ Responsibilities:
 
 ### Additional State Containers
 
+- `AppActionDispatcher` for scoped shell-to-page actions such as opening the active board's create-task drawer from the top bar.
 - `CommandPaletteState` for command results, keyboard focus, and selected action.
 - `NotificationState` for unread counts and toast coordination.
 - `ConnectionState` for SignalR lifecycle, reconnect attempts, and offline/sync-pending badges.
@@ -1070,6 +1084,8 @@ Use Interactive Auto or Interactive WebAssembly only where client-side execution
 ### Design Rationale
 
 Render modes should be intentional per page or component. The app should demonstrate static rendering, server interactivity, and optional client-side interactivity where each model has a clear technical reason.
+
+Do not apply `@rendermode InteractiveServer` directly to `MainLayout`. The layout body is a `RenderFragment`, which cannot be serialized across that interactive boundary. Shell-level actions that need interactivity should be isolated into child components, then coordinate with the active page through scoped state or an action dispatcher.
 
 ---
 

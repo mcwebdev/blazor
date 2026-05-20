@@ -127,7 +127,7 @@
                         <button type="button" class="utility-button" title="Account" aria-label="Account">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</button>
                     </Authorized>
                 </AuthorizeView>
-                <button type="button" class="primary-action">New task</button>
+                <TopBarNewTaskButton />
             </div>
         </header>
 
