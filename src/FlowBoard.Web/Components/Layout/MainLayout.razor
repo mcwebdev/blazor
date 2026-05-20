@@ -10,30 +10,74 @@
             </span>
         </a>
 
-        <nav class="nav-links" aria-label="Primary navigation">
-            <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
-            <NavLink href="/boards/demo">Board</NavLink>
-            <NavLink href="/analytics">Analytics</NavLink>
-            <NavLink href="/health">Health</NavLink>
+        <section class="workspace-switcher" aria-label="Workspace switcher">
+            <div class="workspace-label">
+                <span>Workspace</span>
+                <strong>Product Launch</strong>
+            </div>
+            <button type="button" class="switcher-button" aria-label="Switch workspace">Switch</button>
+        </section>
+
+        <nav class="nav-group" aria-label="Primary navigation">
+            <p class="nav-group-label">Workspace</p>
+            <NavLink href="/" Match="NavLinkMatch.All" class="nav-link">
+                <span class="nav-icon">DB</span>
+                <span class="nav-copy">
+                    <strong>Dashboard</strong>
+                    <small>Tasks, alerts, and status</small>
+                </span>
+            </NavLink>
+            <NavLink href="/boards/demo" class="nav-link">
+                <span class="nav-icon">BD</span>
+                <span class="nav-copy">
+                    <strong>Board</strong>
+                    <small>Kanban and replay</small>
+                </span>
+            </NavLink>
+            <NavLink href="/analytics" class="nav-link">
+                <span class="nav-icon">AN</span>
+                <span class="nav-copy">
+                    <strong>Analytics</strong>
+                    <small>Metrics and drill-downs</small>
+                </span>
+            </NavLink>
         </nav>
 
-        <div class="environment-card">
-            <span class="status-dot"></span>
-            <div>
-                <strong>Cloud Run ready</strong>
-                <small>Firebase Hosting routes here</small>
+        <nav class="nav-group" aria-label="Operations navigation">
+            <p class="nav-group-label">Operations</p>
+            <NavLink href="/health" class="nav-link">
+                <span class="nav-icon">OK</span>
+                <span class="nav-copy">
+                    <strong>Health</strong>
+                    <small>Deploy status</small>
+                </span>
+            </NavLink>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="resource-chip">
+                <span class="chip-dot"></span>
+                <span>Cloud Run ready</span>
+            </div>
+            <div class="resource-chip muted">
+                <span class="chip-dot muted"></span>
+                <span>Firebase Hosting live</span>
             </div>
         </div>
+
     </aside>
 
     <main class="content-shell">
         <header class="topbar">
-            <div>
+            <div class="topbar-title">
                 <p class="eyebrow">Blazor Web App</p>
                 <h1>Collaborative task operations</h1>
+                <p class="topbar-subtitle">Board-centric workflows, live updates, replay, and analytics in one shell.</p>
             </div>
             <div class="topbar-actions">
-                <button type="button" class="icon-button" title="Open command palette" aria-label="Open command palette">⌘K</button>
+                <button type="button" class="utility-button" title="Open command palette" aria-label="Open command palette">⌘K</button>
+                <button type="button" class="utility-button" title="Open notifications" aria-label="Open notifications">12</button>
+                <button type="button" class="utility-button" title="Account" aria-label="Account">MC</button>
                 <button type="button" class="primary-action">New task</button>
             </div>
         </header>

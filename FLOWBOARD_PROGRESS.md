@@ -71,6 +71,7 @@ Completed:
 - Dockerfile added for Cloud Run source deployments.
 - First real Blazor container deployed to Cloud Run.
 - Public Firebase URL now serves the Blazor app instead of the Cloud Run placeholder.
+- App shell refreshed with a denser sidebar, workspace switcher, stronger top bar, and clearer utility actions.
 
 ## Current Infrastructure
 
@@ -154,3 +155,10 @@ Continue Phase 1 - Foundation:
   - `/ready`
 - Browser snapshot confirmed the public FlowBoard dashboard renders at `https://blazor-5c3d4.web.app/`.
 - Note: exact `/healthz` returned a Google 404 in Cloud Run/Firebase, so the public health endpoint is `/health`.
+
+### 2026-05-20 - App Shell Styling Pass
+
+- Reworked the primary navigation from simple links into a richer sidebar with grouped sections.
+- Added a workspace switcher, resource chips, and utility actions to the top bar.
+- Switched the base font to `Manrope` for a less generic product feel.
+- Verified the refreshed shell renders cleanly in the browser on localhost.
