@@ -15,6 +15,49 @@ public sealed record TaskCardDto(
     int ChecklistTotalCount,
     int SortOrder);
 
+public class TaskDetailDto
+{
+    public Guid Id { get; set; }
+    public Guid BoardId { get; set; }
+    public Guid ColumnId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public TaskPriority Priority { get; set; }
+    public TaskItemStatus Status { get; set; }
+    public string? AssigneeName { get; set; }
+    public string? AssigneeUserId { get; set; }
+    public DateTime? DueDateUtc { get; set; }
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    public TaskDetailDto() { }
+
+    public TaskDetailDto(
+        Guid id,
+        Guid boardId,
+        Guid columnId,
+        string title,
+        string? description,
+        TaskPriority priority,
+        TaskItemStatus status,
+        string? assigneeName,
+        string? assigneeUserId,
+        DateTime? dueDateUtc,
+        byte[] rowVersion)
+    {
+        Id = id;
+        BoardId = boardId;
+        ColumnId = columnId;
+        Title = title;
+        Description = description;
+        Priority = priority;
+        Status = status;
+        AssigneeName = assigneeName;
+        AssigneeUserId = assigneeUserId;
+        DueDateUtc = dueDateUtc;
+        RowVersion = rowVersion;
+    }
+}
+
 public sealed record BoardColumnDto(
     Guid Id,
     string Name,

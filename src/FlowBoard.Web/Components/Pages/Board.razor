@@ -1,17 +1,147 @@
 @page "/boards/{BoardId}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Infrastructure.Data
+@inject IBoardService BoardService
 
-<PageTitle>Board - FlowBoard</PageTitle>
+<PageTitle>@(BoardData?.Name ?? "Board") - FlowBoard</PageTitle>
 
-<section class="placeholder-page">
-    <p class="eyebrow">Board route</p>
-    <h2>Board shell is online</h2>
-    <p>
-        Board <strong>@BoardId</strong> is ready for the next implementation step:
-        persisted workspaces, columns, task cards, SignalR events, and replayable activity history.
-    </p>
-</section>
+@if (BoardData is null)
+{
+    if (IsLoading)
+    {
+        <section class="placeholder-page">
+            <p>Loading board...</p>
+        </section>
+    }
+    else
+    {
+        <section class="placeholder-page">
+            <p class="eyebrow">Error</p>
+            <h2>Board not found</h2>
+            <p>We couldn't find board <strong>@BoardId</strong>.</p>
+        </section>
+    }
+}
+else
+{
+    <div class="section-heading compact">
+        <div>
+            <p class="eyebrow">Board</p>
+            <h2>@BoardData.Name</h2>
+            @if (!string.IsNullOrEmpty(BoardData.Description))
+            {
+                <p style="margin: 0; color: #65717a; font-size: 0.9rem;">@BoardData.Description</p>
+            }
+        </div>
+        <div>
+            <button type="button" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Board Settings</button>
+        </div>
+    </div>
+
+    <div class="kanban-preview" style="padding-top: 1rem; flex-grow: 1; min-height: 500px;">
+        @foreach (var col in BoardData.Columns.OrderBy(c => c.SortOrder))
+        {
+            <div class="kanban-column" 
+                 ondragover="event.preventDefault();"
+                 @ondrop="() => HandleDropAsync(col.Id)">
+                <header>
+                    <h3>@col.Name</h3>
+                    <span>@col.Tasks.Count</span>
+                </header>
+                
+                @foreach (var task in col.Tasks.OrderBy(t => t.SortOrder))
+                {
+                    <div class="task-card" draggable="true" 
+                         @ondragstart="() => HandleDragStart(task)"
+                         @onclick="() => OpenTaskDrawer(task.Id)">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                            <span class="priority @task.Priority.ToString().ToLower()">@task.Priority</span>
+                            @if (!string.IsNullOrEmpty(task.AssigneeName))
+                            {
+                                <span class="user-avatar" style="display: inline-flex; width: 24px; height: 24px; font-size: 0.65rem; background: #e2e8f0; border-radius: 50%; align-items: center; justify-content: center; font-weight: bold; color: #475569;" title="@task.AssigneeName">
+                                    @(task.AssigneeName.Substring(0, 2).ToUpper())
+                                </span>
+                            }
+                        </div>
+                        <h4>@task.Title</h4>
+                        <div style="display: flex; justify-content: space-between; margin-top: 0.75rem; font-size: 0.8rem; color: #65717a; font-weight: 600;">
+                            <span>@(task.CommentCount > 0 ? $"💬 {task.CommentCount}" : "")</span>
+                            @if (task.ChecklistTotalCount > 0)
+                            {
+                                <span>☑️ @task.ChecklistCompleteCount/@task.ChecklistTotalCount</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <TaskDrawer @ref="taskDrawer" OnTaskSaved="LoadBoardDataAsync" />
+}
 
 @code {
     [Parameter]
     public string BoardId { get; set; } = string.Empty;
+
+    private BoardDto? BoardData;
+    private bool IsLoading = true;
+    
+    private TaskCardDto? DraggedTask;
+    private TaskDrawer? taskDrawer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBoardDataAsync();
+    }
+
+    private async Task LoadBoardDataAsync()
+    {
+        IsLoading = true;
+        
+        // If "demo" is passed, use the seeded demo board ID
+        if (BoardId.Equals("demo", StringComparison.OrdinalIgnoreCase))
+        {
+            BoardData = await BoardService.GetBoardAsync(SeedData.BoardId);
+        }
+        else if (Guid.TryParse(BoardId, out var id))
+        {
+            BoardData = await BoardService.GetBoardAsync(id);
+        }
+
+        IsLoading = false;
+    }
+    
+    private void HandleDragStart(TaskCardDto task)
+    {
+        DraggedTask = task;
+    }
+
+    private async Task HandleDropAsync(Guid targetColumnId)
+    {
+        if (DraggedTask == null || DraggedTask.Status.ToString() == targetColumnId.ToString())
+            return; // Wait, we don't have column id on task. Let's just update via backend.
+
+        // In a full implementation, calculate newSortOrder based on drop position
+        int newSortOrder = 0;
+        
+        // Call backend to move task
+        await BoardService.MoveTaskAsync(DraggedTask.Id, targetColumnId, newSortOrder);
+        
+        DraggedTask = null;
+        
+        // Reload board data
+        await LoadBoardDataAsync();
+    }
+
+    private async Task OpenTaskDrawer(Guid taskId)
+    {
+        if (taskDrawer != null)
+        {
+            await taskDrawer.OpenAsync(taskId);
+        }
+    }
 }

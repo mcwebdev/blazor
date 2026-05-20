@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
 
 <div class="app-shell">
     <aside class="sidebar">
@@ -83,11 +84,29 @@
                 </div>
             </div>
             <div class="sidebar-user">
-                <span class="user-avatar">MC</span>
-                <span class="user-info">
-                    <strong>Mike C.</strong>
-                    <small>Admin</small>
-                </span>
+                <AuthorizeView>
+                    <Authorized>
+                        <span class="user-avatar">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</span>
+                        <span class="user-info">
+                            <strong>@(context.User.Identity?.Name?.Split('@').FirstOrDefault() ?? "User")</strong>
+                            <small>Admin</small>
+                        </span>
+                        <form action="Account/Logout" method="post" style="margin-left: auto;">
+                            <AntiforgeryToken />
+                            <input type="hidden" name="ReturnUrl" value="" />
+                            <button type="submit" title="Logout" style="background:none; border:none; padding: 0.25rem; color: #b5c4ce; cursor: pointer;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
+                        </form>
+                    </Authorized>
+                    <NotAuthorized>
+                        <span class="user-avatar">?</span>
+                        <span class="user-info">
+                            <strong>Guest</strong>
+                            <small><a href="/account/login" style="color: inherit; text-decoration: underline;">Log in</a></small>
+                        </span>
+                    </NotAuthorized>
+                </AuthorizeView>
             </div>
         </div>
 
@@ -103,7 +122,11 @@
             <div class="topbar-actions">
                 <button type="button" class="utility-button" title="Open command palette" aria-label="Open command palette">⌘K</button>
                 <button type="button" class="utility-button" title="Open notifications" aria-label="Open notifications">12</button>
-                <button type="button" class="utility-button" title="Account" aria-label="Account">MC</button>
+                <AuthorizeView>
+                    <Authorized>
+                        <button type="button" class="utility-button" title="Account" aria-label="Account">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</button>
+                    </Authorized>
+                </AuthorizeView>
                 <button type="button" class="primary-action">New task</button>
             </div>
         </header>

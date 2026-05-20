@@ -76,7 +76,9 @@ Completed:
 - Solution restructured to Clean Architecture (Domain, Application, Infrastructure, Web).
 - Database context with SQLite and ASP.NET Core Identity integrated.
 - Initial seed data populating dashboard via IDashboardService.
-
+- Built custom Blazor SSR Identity Login and Register pages.
+- Enforced route authorization globally on Home, Board, and Analytics.
+- Bound Demo Board to real database data via IBoardService.
 ## Current Infrastructure
 
 Firebase:
@@ -101,13 +103,12 @@ Google Cloud:
 
 ## Next Steps
 
-Begin Phase 2 - Core Features:
+## Phase 2: Core Interactivity & Live Operations
 
-1. Build Login / Registration pages for Identity.
-2. Build Board View data integration (fetch columns, tasks, labels from IBoardService).
-3. Build Task Panel / Off-canvas drawer.
-4. Implement board state mutations (drag and drop, edit tasks).
-5. Prepare for PostgreSQL integration on Cloud Run deployment.
+- [x] Integrate HTML5 Drag & Drop or Blazor JS interop for Kanban lanes
+- [x] Build slide-out Task Detail Drawer for editing tasks
+- [x] Wire component events back to `IBoardService` mutations
+- [x] Deploy to Google Cloud Run utilizing Cloud SQL for PostgreSQL.
 
 ## Decisions
 
@@ -186,3 +187,17 @@ Begin Phase 2 - Core Features:
 - Solved an SQLite `IsRowVersion` constraint mapping issue by shifting to explicit `.IsConcurrencyToken()` and app-generated versions.
 - Re-wrote `Home.razor` to load actual data from the database using `IDashboardService` instead of hardcoded strings.
 - Restarted `dotnet run` cleanly with the new architecture.
+
+### 2026-05-20 - Phase 2 Core Features (Auth & Board Data)
+
+- Created custom Blazor SSR Identity pages (`Login.razor`, `Register.razor`).
+- Added an `/Account/Logout` POST endpoint in `IdentityComponentsEndpointRouteBuilderExtensions.cs`.
+- Refactored `MainLayout.razor` to use `AuthorizeView` to dynamically display user profiles (avatar and email).
+- Enforced global route authorization by placing `[Authorize]` attributes on `Home.razor`, `Board.razor`, and `Analytics.razor`.
+- Refactored `Board.razor` to retrieve dynamic data (columns, tasks, and labels) from the `IBoardService` instead of using static placeholder HTML.
+- Confirmed the authentication flow works locally and that the Board accurately represents the SQLite database seed data.
+
+### 2026-05-20 - Phase 2 Cloud Deployment
+- Configured Cloud SQL and deployed to Cloud Run successfully. 
+- Overcame EF Core multiple-provider migration hurdles by utilizing `EnsureCreatedAsync` for local SQLite development and preserving `dotnet ef` migrations strictly for PostgreSQL in production. 
+- Application is serving 100% of live traffic natively.

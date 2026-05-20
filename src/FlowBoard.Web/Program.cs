@@ -9,6 +9,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddFlowBoardInfrastructure(
     builder.Configuration,
@@ -47,10 +48,9 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// Seed data in development
-if (app.Environment.IsDevelopment())
-{
-    await SeedData.InitializeAsync(app.Services);
-}
+app.MapAdditionalIdentityEndpoints();
+
+// Initialize database and seed data (runs migrations on startup)
+await SeedData.InitializeAsync(app.Services);
 
 app.Run();

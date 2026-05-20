@@ -3,6 +3,9 @@ WORKDIR /src
 
 COPY global.json FlowBoard.sln ./
 COPY src/FlowBoard.Web/FlowBoard.Web.csproj src/FlowBoard.Web/
+COPY src/FlowBoard.Application/FlowBoard.Application.csproj src/FlowBoard.Application/
+COPY src/FlowBoard.Domain/FlowBoard.Domain.csproj src/FlowBoard.Domain/
+COPY src/FlowBoard.Infrastructure/FlowBoard.Infrastructure.csproj src/FlowBoard.Infrastructure/
 RUN dotnet restore FlowBoard.sln
 
 COPY . .

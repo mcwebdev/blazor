@@ -1,0 +1,96 @@
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@inject IBoardService BoardService
+
+<div class="task-drawer-backdrop @(IsOpen ? "open" : "")" @onclick="Close"></div>
+<div class="task-drawer @(IsOpen ? "open" : "")">
+    @if (Task != null)
+    {
+        <div class="drawer-header">
+            <h3>Edit Task</h3>
+            <button type="button" class="close-btn" @onclick="Close">✕</button>
+        </div>
+        <div class="drawer-body">
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" class="form-control" @bind="Task.Title" />
+            </div>
+            
+            <div class="form-group">
+                <label>Description</label>
+                <textarea class="form-control" rows="4" @bind="Task.Description"></textarea>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Priority</label>
+                    <select class="form-control" @bind="Task.Priority">
+                        @foreach (var priority in Enum.GetValues<TaskPriority>())
+                        {
+                            <option value="@priority">@priority</option>
+                        }
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Status</label>
+                    <select class="form-control" @bind="Task.Status">
+                        @foreach (var status in Enum.GetValues<TaskItemStatus>())
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="drawer-footer">
+            <button class="btn btn-secondary" @onclick="Close">Cancel</button>
+            <button class="btn btn-primary" @onclick="SaveAsync">Save Changes</button>
+        </div>
+    }
+    else if (IsLoading)
+    {
+        <div class="drawer-body">
+            <p>Loading task details...</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback OnTaskSaved { get; set; }
+
+    public bool IsOpen { get; private set; }
+    public TaskDetailDto? Task { get; private set; }
+    private bool IsLoading = false;
+
+    public async Task OpenAsync(Guid taskId)
+    {
+        IsOpen = true;
+        IsLoading = true;
+        Task = null;
+        StateHasChanged();
+
+        Task = await BoardService.GetTaskAsync(taskId);
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        Task = null;
+        StateHasChanged();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (Task != null)
+        {
+            await BoardService.UpdateTaskAsync(Task);
+            await OnTaskSaved.InvokeAsync();
+            Close();
+        }
+    }
+}

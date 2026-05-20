@@ -81,4 +81,71 @@ public class BoardService : IBoardService
 
         return boards;
     }
+
+    public async Task<TaskDetailDto?> GetTaskAsync(Guid taskId)
+    {
+        var task = await _db.TaskItems
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == taskId);
+
+        if (task is null)
+            return null;
+
+        string? assigneeName = null;
+        if (task.AssigneeUserId is not null)
+        {
+            var user = await _db.Users.FindAsync(task.AssigneeUserId);
+            assigneeName = user?.DisplayName;
+        }
+
+        return new TaskDetailDto(
+            task.Id,
+            task.BoardId,
+            task.ColumnId,
+            task.Title,
+            task.Description,
+            task.Priority,
+            task.Status,
+            assigneeName,
+            task.AssigneeUserId,
+            task.DueDateUtc,
+            task.RowVersion
+        );
+    }
+
+    public async Task UpdateTaskAsync(TaskDetailDto taskDto)
+    {
+        var task = await _db.TaskItems.FindAsync(taskDto.Id);
+        if (task is null)
+            return;
+
+        // Optimistic concurrency check
+        _db.Entry(task).Property(t => t.RowVersion).OriginalValue = taskDto.RowVersion;
+
+        task.Title = taskDto.Title;
+        task.Description = taskDto.Description;
+        task.Priority = taskDto.Priority;
+        task.Status = taskDto.Status;
+        task.AssigneeUserId = taskDto.AssigneeUserId;
+        task.DueDateUtc = taskDto.DueDateUtc;
+
+        // In a real app we would set LastModifiedByUserId here as well.
+        
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task MoveTaskAsync(Guid taskId, Guid newColumnId, int newSortOrder)
+    {
+        var task = await _db.TaskItems.FindAsync(taskId);
+        if (task is null)
+            return;
+
+        // Simple implementation: just change the column and sort order.
+        // In a complete implementation, you'd want to shift the SortOrder of other tasks in the target column 
+        // to make room for this one. For now, we'll append/update directly.
+        task.ColumnId = newColumnId;
+        task.SortOrder = newSortOrder;
+
+        await _db.SaveChangesAsync();
+    }
 }

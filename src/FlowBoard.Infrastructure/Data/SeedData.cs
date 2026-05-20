@@ -20,7 +20,14 @@ public static class SeedData
         var db = scope.ServiceProvider.GetRequiredService<FlowBoardDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-        await db.Database.MigrateAsync();
+        if (db.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            await db.Database.EnsureCreatedAsync();
+        }
+        else
+        {
+            await db.Database.MigrateAsync();
+        }
 
         // Skip seeding if data already exists.
         if (await db.Workspaces.AnyAsync())
