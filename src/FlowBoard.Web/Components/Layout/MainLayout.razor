@@ -1,9 +1,14 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 <div class="app-shell">
     <aside class="sidebar">
         <a class="brand" href="/">
-            <span class="brand-mark">F</span>
+            <span class="brand-mark">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M3 4h14l-2 12H5L3 4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M7 8l3 4 3-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </span>
             <span>
                 <strong>FlowBoard</strong>
                 <small>Live work orchestration</small>
@@ -15,27 +20,37 @@
                 <span>Workspace</span>
                 <strong>Product Launch</strong>
             </div>
-            <button type="button" class="switcher-button" aria-label="Switch workspace">Switch</button>
+            <button type="button" class="switcher-button" aria-label="Switch workspace">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 1l5 6-5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
         </section>
+
+        <hr class="sidebar-divider" />
 
         <nav class="nav-group" aria-label="Primary navigation">
             <p class="nav-group-label">Workspace</p>
             <NavLink href="/" Match="NavLinkMatch.All" class="nav-link">
-                <span class="nav-icon">DB</span>
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="2" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="10" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="10" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
+                </span>
                 <span class="nav-copy">
                     <strong>Dashboard</strong>
                     <small>Tasks, alerts, and status</small>
                 </span>
             </NavLink>
             <NavLink href="/boards/demo" class="nav-link">
-                <span class="nav-icon">BD</span>
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="4" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="7" y="2" width="4" height="9" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="4" height="11" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+                </span>
                 <span class="nav-copy">
                     <strong>Board</strong>
                     <small>Kanban and replay</small>
                 </span>
             </NavLink>
             <NavLink href="/analytics" class="nav-link">
-                <span class="nav-icon">AN</span>
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 15l4-5 3 3 5-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+                </span>
                 <span class="nav-copy">
                     <strong>Analytics</strong>
                     <small>Metrics and drill-downs</small>
@@ -46,7 +61,9 @@
         <nav class="nav-group" aria-label="Operations navigation">
             <p class="nav-group-label">Operations</p>
             <NavLink href="/health" class="nav-link">
-                <span class="nav-icon">OK</span>
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 9h3l2-5 3 10 2-5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
                 <span class="nav-copy">
                     <strong>Health</strong>
                     <small>Deploy status</small>
@@ -55,13 +72,22 @@
         </nav>
 
         <div class="sidebar-footer">
-            <div class="resource-chip">
-                <span class="chip-dot"></span>
-                <span>Cloud Run ready</span>
+            <div class="sidebar-status">
+                <div class="resource-chip">
+                    <span class="chip-dot"></span>
+                    <span>Cloud Run ready</span>
+                </div>
+                <div class="resource-chip muted">
+                    <span class="chip-dot muted"></span>
+                    <span>Firebase Hosting live</span>
+                </div>
             </div>
-            <div class="resource-chip muted">
-                <span class="chip-dot muted"></span>
-                <span>Firebase Hosting live</span>
+            <div class="sidebar-user">
+                <span class="user-avatar">MC</span>
+                <span class="user-info">
+                    <strong>Mike C.</strong>
+                    <small>Admin</small>
+                </span>
             </div>
         </div>
 

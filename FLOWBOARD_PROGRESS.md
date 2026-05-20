@@ -162,3 +162,8 @@ Continue Phase 1 - Foundation:
 - Added a workspace switcher, resource chips, and utility actions to the top bar.
 - Switched the base font to `Manrope` for a less generic product feel.
 - Verified the refreshed shell renders cleanly in the browser on localhost.
+
+### 2026-05-20 - Overview Doc Added
+
+- Added `FLOWBOARD_OVERVIEW.md` as the quick architecture and environment reference.
+- The overview file summarizes the request flow, stack, current deployment URLs, and the safe `gcloud` usage pattern.
