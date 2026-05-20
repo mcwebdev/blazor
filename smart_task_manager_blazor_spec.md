@@ -53,8 +53,13 @@ Build a full-stack Blazor application that combines project/task management, rea
 ### Deployment
 
 - Dockerfile and Docker Compose
-- Azure App Service, Render, Railway, or local Docker Compose
-- Optional Azure SignalR Service when deploying beyond a single instance
+- Firebase Hosting as the public entry point, CDN, preview-channel host, and custom-domain layer
+- Cloud Run for the ASP.NET Core Blazor container
+- Firebase Hosting rewrite from `/**` to the Cloud Run service
+- Cloud SQL for PostgreSQL as the production database
+- Secret Manager for connection strings and auth secrets
+- Cloud Run `max-instances=1` for the simple demo deployment
+- Memorystore Redis or another SignalR backplane when scaling beyond one Cloud Run instance
 - Structured logging and OpenTelemetry traces for key commands
 
 ---
@@ -1270,7 +1275,11 @@ Then continue to the signature target:
 - Component tests
 - Service tests
 - Playwright multi-browser flows
-- Docker/deployment
+- Dockerfile and Docker Compose
+- Cloud Run deployment
+- Firebase Hosting rewrite configuration
+- Cloud SQL migration path
+- Secret Manager configuration
 - README and demo GIF/screenshots
 
 ---
@@ -1303,6 +1312,10 @@ A real-time collaborative task manager built with Blazor, ASP.NET Core, SignalR,
 
 Explain projects, layers, render modes, SignalR flow, state management, replay architecture, and authorization boundaries.
 
+## Deployment
+
+Explain Firebase Hosting, Cloud Run, Cloud SQL, Secret Manager, and the Hosting rewrite path.
+
 ## Screenshots
 
 Add dashboard, board, task drawer, replay timeline, analytics, and audit operations.
@@ -1326,7 +1339,180 @@ Add advanced feature ideas not yet implemented.
 
 ---
 
-## 20. Final Scope Recommendation
+## 20. Firebase / Cloud Run Deployment Plan
+
+### Target Architecture
+
+```text
+User
+  -> Firebase Hosting
+      -> rewrite /** to Cloud Run
+          -> ASP.NET Core Blazor Web App
+          -> SignalR hub
+          -> ASP.NET Core Identity
+          -> EF Core
+          -> Cloud SQL PostgreSQL
+```
+
+### Firebase Setup
+
+- Create a new Firebase project for FlowBoard.
+- Firebase project ID: `blazor-5c3d4`.
+- Firebase Web App ID: `1:716082641708:web:2ed0d47399cdeb8bca8a89`.
+- Firebase Analytics measurement ID: `G-S5NRH9PCBQ`.
+- Firebase Hosting site ID: `blazor-5c3d4`.
+- Firebase Hosting live URL: `https://blazor-5c3d4.web.app`.
+- Add a Firebase Web App registration for Hosting, preview channels, Analytics, and Performance Monitoring.
+- Use Firebase Hosting for the public URL and custom domain.
+- Do not replace ASP.NET Core Identity with Firebase Auth unless the auth architecture is intentionally redesigned.
+- Firebase Web SDK usage should be limited to browser-side products such as Analytics or Performance Monitoring unless the auth/storage architecture changes.
+
+### Local Google Cloud CLI Safety
+
+Do not change the global/default `gcloud` project while working on FlowBoard. The default configuration is reserved for existing projects such as DeepSpeed.
+
+Use the dedicated Blazor configuration for all Google Cloud commands:
+
+```bash
+gcloud --configuration=blazor <command>
+```
+
+Current intended configuration:
+
+```text
+default -> deepspeed-460b4
+blazor  -> blazor-5c3d4
+```
+
+Verification commands:
+
+```bash
+gcloud config configurations list
+gcloud config list
+gcloud --configuration=blazor config list
+```
+
+Firebase commands should also be explicitly scoped:
+
+```bash
+firebase deploy --project blazor-5c3d4 --only hosting
+```
+
+### Cloud Run Setup
+
+- Build the Blazor app as a Docker container.
+- Deploy the container to Cloud Run.
+- Configure environment variables through Cloud Run and Secret Manager.
+- Set `ASPNETCORE_URLS=http://+:8080`.
+- Configure Cloud Run request timeout high enough for SignalR/WebSocket connections.
+- Use `max-instances=1` for the first demo deployment to avoid multi-instance SignalR synchronization issues.
+- Add a Redis backplane or equivalent pub/sub strategy before increasing Cloud Run instance count.
+
+Provisioned Cloud Run baseline:
+
+- Service name: `flowboard`.
+- Region: `us-central1`.
+- Runtime service account: `flowboard-runner@blazor-5c3d4.iam.gserviceaccount.com`.
+- Current placeholder image: `us-docker.pkg.dev/cloudrun/container/hello`.
+- Public Cloud Run URL: `https://flowboard-n6qswg5pla-uc.a.run.app`.
+- Max instances: `1`.
+- Timeout: `3600`.
+- Cloud SQL instance mounted: `blazor-5c3d4:us-central1:blazor-fdc`.
+- Replace the placeholder image with the Blazor app container during the first app deployment.
+
+Provisioned Google Cloud APIs:
+
+- `run.googleapis.com`
+- `artifactregistry.googleapis.com`
+- `cloudbuild.googleapis.com`
+- `secretmanager.googleapis.com`
+- `sqladmin.googleapis.com`
+- `firestore.googleapis.com`
+- `firebasehosting.googleapis.com`
+
+Provisioned Artifact Registry:
+
+- Repository: `flowboard`.
+- Location: `us-central1`.
+- Format: Docker.
+
+### Firebase Hosting Rewrite
+
+Use Firebase Hosting to route all app traffic to Cloud Run:
+
+```json
+{
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "flowboard",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}
+```
+
+### Database and Secrets
+
+- Use Cloud SQL PostgreSQL for production-style persistence.
+- Cloud SQL instance: `blazor-fdc`.
+- Cloud SQL region: `us-central1`.
+- Application database: `flowboard`.
+- Application database user: `flowboard_app`.
+- Use SQLite only for local development and tests.
+- Store connection strings, auth signing keys, OAuth secrets, and SMTP/API secrets in Secret Manager.
+- Provisioned Secret Manager secrets:
+  - `flowboard-db-connection-string`
+  - `flowboard-auth-signing-key`
+- Run EF Core migrations during release or through a controlled migration command before shifting traffic.
+
+### SignalR and WebSocket Notes
+
+- Cloud Run supports WebSockets, but connections are still subject to request timeouts.
+- The client must reconnect automatically.
+- Presence state should tolerate disconnect/reconnect events.
+- Single-instance deployment is enough for a polished demo.
+- Multi-instance deployment requires shared presence and message fan-out.
+
+### Firebase CLI Commands
+
+Expected deployment commands after the app exists:
+
+```bash
+gcloud --configuration=blazor run deploy flowboard \
+  --source . \
+  --project blazor-5c3d4 \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --service-account flowboard-runner@blazor-5c3d4.iam.gserviceaccount.com \
+  --add-cloudsql-instances blazor-5c3d4:us-central1:blazor-fdc \
+  --set-secrets ConnectionStrings__DefaultConnection=flowboard-db-connection-string:latest,FlowBoard__AuthSigningKey=flowboard-auth-signing-key:latest \
+  --max-instances 1 \
+  --timeout 3600
+firebase deploy --project blazor-5c3d4 --only hosting
+```
+
+Readiness verification:
+
+```bash
+curl -I https://blazor-5c3d4.web.app
+gcloud --configuration=blazor run services describe flowboard --project blazor-5c3d4 --region us-central1
+firebase hosting:channel:list --project blazor-5c3d4
+```
+
+---
+
+## 21. Final Scope Recommendation
 
 Prioritize depth, reliability, and one memorable signature experience over disconnected feature count.
 
