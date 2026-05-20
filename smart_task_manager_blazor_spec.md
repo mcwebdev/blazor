@@ -1284,7 +1284,47 @@ Then continue to the signature target:
 
 ---
 
-## 19. README Structure
+## 19. Cross-Session Progress Tracking
+
+This project will be built across multiple sessions. Keep implementation state in `FLOWBOARD_PROGRESS.md`.
+
+### Required Start-of-Session Workflow
+
+At the start of every implementation session:
+
+1. Read this technical spec.
+2. Read `FLOWBOARD_PROGRESS.md`.
+3. Run `git status --short --branch --ignored`.
+4. Verify the active Google Cloud safety boundary:
+
+```bash
+gcloud config configurations list
+gcloud config list
+gcloud --configuration=blazor config list
+```
+
+5. Continue from the next unchecked or explicitly named item in `FLOWBOARD_PROGRESS.md`.
+
+### Required End-of-Session Workflow
+
+Before ending every implementation session:
+
+1. Update `FLOWBOARD_PROGRESS.md` with completed work.
+2. Add any important implementation notes, blockers, commands, URLs, or deployment state.
+3. Record the next recommended task.
+4. Run the relevant build/test/verification commands.
+5. Commit progress when the repo is in a coherent state.
+
+### Progress File Rules
+
+- Keep `FLOWBOARD_PROGRESS.md` tracked in Git.
+- Do not put secrets, tokens, passwords, or connection-string values in it.
+- Store durable decisions, current phase, completed features, verification commands, and known risks.
+- Use the session log at the bottom for append-only handoff notes.
+
+---
+
+## 20. README Structure
 
 Include a strong README with enough information to build, run, test, and understand the application.
 
@@ -1339,7 +1379,7 @@ Add advanced feature ideas not yet implemented.
 
 ---
 
-## 20. Firebase / Cloud Run Deployment Plan
+## 21. Firebase / Cloud Run Deployment Plan
 
 ### Target Architecture
 
@@ -1512,7 +1552,7 @@ firebase hosting:channel:list --project blazor-5c3d4
 
 ---
 
-## 21. Final Scope Recommendation
+## 22. Final Scope Recommendation
 
 Prioritize depth, reliability, and one memorable signature experience over disconnected feature count.
 
