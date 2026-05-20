@@ -10,6 +10,11 @@ node_modules/
 appsettings.Development.json
 appsettings.Local.json
 
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
 # .NET build output
 bin/
 obj/

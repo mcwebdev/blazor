@@ -1,3 +1,5 @@
+using FlowBoard.Infrastructure;
+using FlowBoard.Infrastructure.Data;
 using FlowBoard.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -5,6 +7,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddFlowBoardInfrastructure(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 
 var app = builder.Build();
 
@@ -15,6 +23,10 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseAntiforgery();
+
+// Authentication & Authorization
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new
 {
@@ -34,5 +46,11 @@ app.MapGet("/ready", () => Results.Ok(new
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Seed data in development
+if (app.Environment.IsDevelopment())
+{
+    await SeedData.InitializeAsync(app.Services);
+}
 
 app.Run();

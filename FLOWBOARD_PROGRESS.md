@@ -30,9 +30,9 @@ blazor  -> blazor-5c3d4
 
 ## Current Status
 
-Current phase: Phase 1 - Foundation in progress.
+Current phase: Phase 2 - Features in progress.
 
-The first deployable Blazor shell is live.
+The foundational backend is built and seeding data to the dashboard.
 
 Completed:
 
@@ -72,6 +72,10 @@ Completed:
 - First real Blazor container deployed to Cloud Run.
 - Public Firebase URL now serves the Blazor app instead of the Cloud Run placeholder.
 - App shell refreshed with a denser sidebar, workspace switcher, stronger top bar, and clearer utility actions.
+- Latest Cloud Run revision after the sidebar styling pass: `flowboard-00004-jzp`.
+- Solution restructured to Clean Architecture (Domain, Application, Infrastructure, Web).
+- Database context with SQLite and ASP.NET Core Identity integrated.
+- Initial seed data populating dashboard via IDashboardService.
 
 ## Current Infrastructure
 
@@ -97,15 +101,13 @@ Google Cloud:
 
 ## Next Steps
 
-Continue Phase 1 - Foundation:
+Begin Phase 2 - Core Features:
 
-1. Add project structure for domain/application services, infrastructure, and tests.
-2. Add ASP.NET Core Identity.
-3. Add EF Core with PostgreSQL provider for production and SQLite for tests.
-4. Add local configuration that does not commit secrets.
-5. Add seed data plan and initial migrations.
-6. Add workspace/member/board/task domain models.
-7. Replace placeholder dashboard data with seeded/read-model-backed data.
+1. Build Login / Registration pages for Identity.
+2. Build Board View data integration (fetch columns, tasks, labels from IBoardService).
+3. Build Task Panel / Off-canvas drawer.
+4. Implement board state mutations (drag and drop, edit tasks).
+5. Prepare for PostgreSQL integration on Cloud Run deployment.
 
 ## Decisions
 
@@ -167,3 +169,20 @@ Continue Phase 1 - Foundation:
 
 - Added `FLOWBOARD_OVERVIEW.md` as the quick architecture and environment reference.
 - The overview file summarizes the request flow, stack, current deployment URLs, and the safe `gcloud` usage pattern.
+
+### 2026-05-20 - Sidebar Styling Deploy
+
+- Reworked the primary nav layout to keep the icon and label on one horizontal row.
+- Deployed the updated container to Cloud Run revision `flowboard-00004-jzp`.
+- Refreshed Firebase Hosting after the Cloud Run rollout so the public URL serves the new revision through the rewrite.
+
+### 2026-05-20 - Phase 1 Backend Foundation
+
+- Restructured the monolithic Blazor app into Clean Architecture (`FlowBoard.Domain`, `FlowBoard.Application`, `FlowBoard.Infrastructure`, `FlowBoard.Web`).
+- Designed 17 core Domain Entities with base `AuditableEntity` and custom Enums.
+- Configured EF Core `FlowBoardDbContext` extending `IdentityDbContext<ApplicationUser>`.
+- Set up SQLite for local development and created the initial EF Core migration.
+- Built a deterministic `SeedData.cs` class to provision users, workspaces, boards, labels, columns, and task items.
+- Solved an SQLite `IsRowVersion` constraint mapping issue by shifting to explicit `.IsConcurrencyToken()` and app-generated versions.
+- Re-wrote `Home.razor` to load actual data from the database using `IDashboardService` instead of hardcoded strings.
+- Restarted `dotnet run` cleanly with the new architecture.
