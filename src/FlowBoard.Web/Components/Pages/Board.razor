@@ -1,0 +1,17 @@
+@page "/boards/{BoardId}"
+
+<PageTitle>Board - FlowBoard</PageTitle>
+
+<section class="placeholder-page">
+    <p class="eyebrow">Board route</p>
+    <h2>Board shell is online</h2>
+    <p>
+        Board <strong>@BoardId</strong> is ready for the next implementation step:
+        persisted workspaces, columns, task cards, SignalR events, and replayable activity history.
+    </p>
+</section>
+
+@code {
+    [Parameter]
+    public string BoardId { get; set; } = string.Empty;
+}

@@ -30,9 +30,9 @@ blazor  -> blazor-5c3d4
 
 ## Current Status
 
-Current phase: Ready to start Phase 1 - Foundation.
+Current phase: Phase 1 - Foundation in progress.
 
-No Blazor application code has been scaffolded yet.
+The first deployable Blazor shell is live.
 
 Completed:
 
@@ -59,6 +59,18 @@ Completed:
   - `flowboard-db-connection-string`
   - `flowboard-auth-signing-key`
 - Firebase Hosting rewrite to Cloud Run is deployed and verified.
+- .NET SDK 10.0.300 installed locally under `$HOME/.dotnet`.
+- Solution scaffolded: `FlowBoard.sln`.
+- Blazor Web App scaffolded: `src/FlowBoard.Web`.
+- Minimal FlowBoard dashboard shell implemented.
+- Placeholder board route implemented: `/boards/demo`.
+- Placeholder analytics route implemented: `/analytics`.
+- Health endpoints implemented:
+  - `/health`
+  - `/ready`
+- Dockerfile added for Cloud Run source deployments.
+- First real Blazor container deployed to Cloud Run.
+- Public Firebase URL now serves the Blazor app instead of the Cloud Run placeholder.
 
 ## Current Infrastructure
 
@@ -75,7 +87,7 @@ Google Cloud:
 - Cloud Run service: `flowboard`
 - Cloud Run region: `us-central1`
 - Cloud Run URL: `https://flowboard-n6qswg5pla-uc.a.run.app`
-- Cloud Run placeholder image: `us-docker.pkg.dev/cloudrun/container/hello`
+- Cloud Run latest ready revision: `flowboard-00003-wt9`
 - Artifact Registry repository: `flowboard`
 - Cloud SQL instance: `blazor-fdc`
 - Cloud SQL connection name: `blazor-5c3d4:us-central1:blazor-fdc`
@@ -84,17 +96,15 @@ Google Cloud:
 
 ## Next Steps
 
-Start Phase 1 - Foundation:
+Continue Phase 1 - Foundation:
 
-1. Scaffold the .NET solution and Blazor Web App.
-2. Add project structure for app, domain/application services, infrastructure, and tests.
-3. Add ASP.NET Core Identity.
-4. Add EF Core with PostgreSQL provider for production and SQLite for tests.
-5. Add base layout, routing, and render mode structure.
-6. Add local configuration that does not commit secrets.
-7. Add seed data plan and initial migrations.
-8. Verify local build/test.
-9. Replace the Cloud Run placeholder image with the first Blazor app deployment.
+1. Add project structure for domain/application services, infrastructure, and tests.
+2. Add ASP.NET Core Identity.
+3. Add EF Core with PostgreSQL provider for production and SQLite for tests.
+4. Add local configuration that does not commit secrets.
+5. Add seed data plan and initial migrations.
+6. Add workspace/member/board/task domain models.
+7. Replace placeholder dashboard data with seeded/read-model-backed data.
 
 ## Decisions
 
@@ -126,3 +136,21 @@ Start Phase 1 - Foundation:
 - Provisioned Artifact Registry, Cloud Run, Cloud SQL app database/user, and Secret Manager secrets.
 - Deployed Cloud Run placeholder and Firebase Hosting rewrite.
 - Verified `https://blazor-5c3d4.web.app` returns HTTP 200 through Cloud Run.
+
+### 2026-05-20 - First Blazor Shell Deployment
+
+- Installed .NET SDK 10.0.300 under `$HOME/.dotnet`.
+- Scaffolded `FlowBoard.sln` and `src/FlowBoard.Web`.
+- Added a deployable FlowBoard Blazor Web App shell with dashboard, board, analytics, and health routes.
+- Added root `Dockerfile`, `.dockerignore`, and `global.json`.
+- Verified local release build with `dotnet build FlowBoard.sln --configuration Release`.
+- Verified local routes `/`, `/boards/demo`, `/health`, and `/ready`.
+- Deployed the Blazor app to Cloud Run service `flowboard`.
+- Verified Firebase Hosting routes to the Blazor app:
+  - `/`
+  - `/boards/demo`
+  - `/analytics`
+  - `/health`
+  - `/ready`
+- Browser snapshot confirmed the public FlowBoard dashboard renders at `https://blazor-5c3d4.web.app/`.
+- Note: exact `/healthz` returned a Google 404 in Cloud Run/Firebase, so the public health endpoint is `/health`.

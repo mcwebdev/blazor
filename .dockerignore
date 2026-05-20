@@ -1,0 +1,12 @@
+.git
+.firebase
+node_modules
+**/bin
+**/obj
+**/TestResults
+smart_task_manager_blazor_interview_notes.md
+notes.txt
+.env
+.env.*
+appsettings.Development.json
+appsettings.Local.json

@@ -1,0 +1,49 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <a class="brand" href="/">
+            <span class="brand-mark">F</span>
+            <span>
+                <strong>FlowBoard</strong>
+                <small>Live work orchestration</small>
+            </span>
+        </a>
+
+        <nav class="nav-links" aria-label="Primary navigation">
+            <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
+            <NavLink href="/boards/demo">Board</NavLink>
+            <NavLink href="/analytics">Analytics</NavLink>
+            <NavLink href="/health">Health</NavLink>
+        </nav>
+
+        <div class="environment-card">
+            <span class="status-dot"></span>
+            <div>
+                <strong>Cloud Run ready</strong>
+                <small>Firebase Hosting routes here</small>
+            </div>
+        </div>
+    </aside>
+
+    <main class="content-shell">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">Blazor Web App</p>
+                <h1>Collaborative task operations</h1>
+            </div>
+            <div class="topbar-actions">
+                <button type="button" class="icon-button" title="Open command palette" aria-label="Open command palette">⌘K</button>
+                <button type="button" class="primary-action">New task</button>
+            </div>
+        </header>
+
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

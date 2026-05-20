@@ -1,0 +1,116 @@
+﻿@page "/"
+
+<PageTitle>FlowBoard</PageTitle>
+
+<section class="dashboard-grid">
+    <article class="metric-card">
+        <span class="metric-label">Assigned to me</span>
+        <strong>12</strong>
+        <small>4 due this week</small>
+    </article>
+
+    <article class="metric-card warning">
+        <span class="metric-label">Overdue</span>
+        <strong>3</strong>
+        <small>Needs review today</small>
+    </article>
+
+    <article class="metric-card">
+        <span class="metric-label">Completed</span>
+        <strong>27</strong>
+        <small>Last 7 days</small>
+    </article>
+
+    <article class="metric-card success">
+        <span class="metric-label">Live users</span>
+        <strong>5</strong>
+        <small>Viewing active boards</small>
+    </article>
+</section>
+
+<section class="workspace-layout">
+    <article class="board-preview">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Demo workspace</p>
+                <h2>Product Launch Board</h2>
+            </div>
+            <span class="connection-pill">Connected</span>
+        </div>
+
+        <div class="kanban-preview" aria-label="Kanban board preview">
+            @foreach (var column in Columns)
+            {
+                <section class="kanban-column">
+                    <header>
+                        <h3>@column.Name</h3>
+                        <span>@column.Tasks.Count</span>
+                    </header>
+
+                    @foreach (var task in column.Tasks)
+                    {
+                        <article class="task-card">
+                            <span class="priority @task.PriorityClass">@task.Priority</span>
+                            <h4>@task.Title</h4>
+                            <p>@task.Owner</p>
+                        </article>
+                    }
+                </section>
+            }
+        </div>
+    </article>
+
+    <aside class="activity-panel">
+        <div class="section-heading compact">
+            <div>
+                <p class="eyebrow">Replay timeline</p>
+                <h2>Recent activity</h2>
+            </div>
+        </div>
+
+        <ol class="activity-list">
+            <li>
+                <span>10:18</span>
+                <p>Sarah moved API contract to Review.</p>
+            </li>
+            <li>
+                <span>10:09</span>
+                <p>Matt assigned Launch checklist to Maya.</p>
+            </li>
+            <li>
+                <span>09:54</span>
+                <p>Jordan added analytics acceptance criteria.</p>
+            </li>
+        </ol>
+
+        <button type="button" class="secondary-action">Replay last 30 minutes</button>
+    </aside>
+</section>
+
+@code {
+    private static readonly IReadOnlyList<BoardColumnPreview> Columns =
+    [
+        new("Backlog",
+        [
+            new("Draft onboarding copy", "Maya Chen", "Medium", "medium"),
+            new("Map launch dependencies", "Jordan Lee", "High", "high")
+        ]),
+        new("In Progress",
+        [
+            new("Wire board replay shell", "Matt Charlton", "High", "high"),
+            new("Prepare Cloud Run deploy", "Avery Kim", "Medium", "medium")
+        ]),
+        new("Review",
+        [
+            new("Validate analytics drill-down", "Sarah Patel", "Low", "low")
+        ]),
+        new("Done",
+        [
+            new("Provision Firebase Hosting", "Ops", "Low", "low")
+        ])
+    ];
+
+    private sealed record BoardColumnPreview(string Name, IReadOnlyList<TaskPreview> Tasks);
+
+    private sealed record TaskPreview(string Title, string Owner, string Priority, string PriorityClass);
+}
