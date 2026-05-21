@@ -457,27 +457,28 @@ a.nav-link:active .nav-copy strong {
 
 /* ── Responsive ──────────────────────────────────────────────── */
 
-::deep .dropdown-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 40;
+::deep .dropdown-container {
+    position: relative;
+    display: flex;
+    align-items: center;
 }
 
 ::deep .dropdown-menu {
     position: absolute;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: #ffffff;
+    border: 1px solid #dce3e8;
     border-radius: 8px;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    z-index: 50;
+    z-index: 1050;
     padding: 0.5rem;
     min-width: 220px;
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 0.25rem;
+}
+
+::deep .dropdown-menu.show {
+    display: flex;
 }
 
 ::deep .workspace-dropdown {
@@ -488,6 +489,9 @@ a.nav-link:active .nav-copy strong {
 
 ::deep .account-menu-container {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 ::deep .account-dropdown {
@@ -500,7 +504,7 @@ a.nav-link:active .nav-copy strong {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted);
+    color: #65717a;
     padding: 0.5rem 0.75rem;
 }
 
@@ -513,7 +517,7 @@ a.nav-link:active .nav-copy strong {
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--text);
+    color: #172026;
     font-size: 0.9rem;
     text-decoration: none;
     cursor: pointer;
@@ -522,22 +526,22 @@ a.nav-link:active .nav-copy strong {
 }
 
 ::deep .dropdown-item:hover:not(:disabled) {
-    background: var(--surface-raised);
+    background: #f6f7f9;
 }
 
 ::deep .dropdown-item.active {
-    background: rgba(37, 99, 235, 0.1);
-    color: var(--text);
+    background: rgba(39, 110, 241, 0.1);
+    color: #172026;
 }
 
 ::deep .dropdown-item:disabled {
-    color: var(--text-muted);
+    color: #65717a;
     cursor: not-allowed;
     opacity: 0.7;
 }
 
 ::deep .dropdown-item.text-danger {
-    color: var(--danger);
+    color: #e50000;
 }
 
 ::deep .dropdown-item.text-danger:hover {
@@ -547,7 +551,7 @@ a.nav-link:active .nav-copy strong {
 ::deep .workspace-icon {
     width: 24px;
     height: 24px;
-    background: var(--primary);
+    background: #276ef1;
     color: white;
     border-radius: 4px;
     display: flex;
@@ -562,12 +566,12 @@ a.nav-link:active .nav-copy strong {
 }
 
 ::deep .check-icon {
-    color: var(--primary);
+    color: #276ef1;
 }
 
 ::deep .dropdown-divider {
     height: 1px;
-    background: var(--border);
+    background: #dce3e8;
     margin: 0.25rem 0;
 }
 
@@ -582,14 +586,14 @@ a.nav-link:active .nav-copy strong {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: var(--surface-raised);
-    border: 1px solid var(--border);
+    background: #f6f7f9;
+    border: 1px solid #dce3e8;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1rem;
     font-weight: 600;
-    color: var(--text);
+    color: #172026;
 }
 
 ::deep .account-details {
@@ -603,7 +607,7 @@ a.nav-link:active .nav-copy strong {
 
 ::deep .account-details small {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: #65717a;
 }
 
 @media (max-width: 860px) {

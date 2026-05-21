@@ -16,31 +16,28 @@
             </span>
         </a>
 
-        <section class="workspace-switcher" aria-label="Workspace switcher">
+        <section class="workspace-switcher dropdown-container" aria-label="Workspace switcher">
             <div class="workspace-label">
                 <span>Workspace</span>
                 <strong>Product Launch</strong>
             </div>
-            <button type="button" class="switcher-button" aria-label="Switch workspace" @onclick="ToggleWorkspaceMenu">
+            <button type="button" class="switcher-button" aria-label="Switch workspace" onclick="toggleDropdown(event, this)">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 1l5 6-5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             
-            @if (isWorkspaceMenuOpen)
-            {
-                <div class="dropdown-menu workspace-dropdown">
-                    <div class="dropdown-header">Workspaces</div>
-                    <button type="button" class="dropdown-item active">
-                        <span class="workspace-icon">P</span>
-                        <span class="workspace-name">Product Launch</span>
-                        <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-                    </button>
-                    <div class="dropdown-divider"></div>
-                    <button type="button" class="dropdown-item" disabled>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                        Create Workspace...
-                    </button>
-                </div>
-            }
+            <div class="dropdown-menu workspace-dropdown">
+                <div class="dropdown-header">Workspaces</div>
+                <button type="button" class="dropdown-item active">
+                    <span class="workspace-icon">P</span>
+                    <span class="workspace-name">Product Launch</span>
+                    <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                </button>
+                <div class="dropdown-divider"></div>
+                <button type="button" class="dropdown-item" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                    Create Workspace...
+                </button>
+            </div>
         </section>
 
         <hr class="sidebar-divider" />
@@ -161,35 +158,32 @@
                 <NotificationBell />
                 <AuthorizeView>
                     <Authorized>
-                        <div class="account-menu-container">
-                            <button type="button" class="utility-button" title="Account" aria-label="Account" @onclick="ToggleAccountMenu">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</button>
+                        <div class="account-menu-container dropdown-container">
+                            <button type="button" class="utility-button" title="Account" aria-label="Account" onclick="toggleDropdown(event, this)">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</button>
                             
-                            @if (isAccountMenuOpen)
-                            {
-                                <div class="dropdown-menu account-dropdown">
-                                    <div class="account-header">
-                                        <div class="account-avatar">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</div>
-                                        <div class="account-details">
-                                            <strong>@(context.User.Identity?.Name?.Split('@').FirstOrDefault() ?? "User")</strong>
-                                            <small>@(context.User.Identity?.Name)</small>
-                                        </div>
+                            <div class="dropdown-menu account-dropdown">
+                                <div class="account-header">
+                                    <div class="account-avatar">@(context.User.Identity?.Name?.Substring(0, 2).ToUpper() ?? "U")</div>
+                                    <div class="account-details">
+                                        <strong>@(context.User.Identity?.Name?.Split('@').FirstOrDefault() ?? "User")</strong>
+                                        <small>@(context.User.Identity?.Name)</small>
                                     </div>
-                                    <div class="dropdown-divider"></div>
-                                    <a href="#" class="dropdown-item" @onclick="CloseMenus" @onclick:preventDefault>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                        Profile Settings
-                                    </a>
-                                    <div class="dropdown-divider"></div>
-                                    <form action="Account/Logout" method="post">
-                                        <AntiforgeryToken />
-                                        <input type="hidden" name="ReturnUrl" value="" />
-                                        <button type="submit" class="dropdown-item text-danger">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-                                            Log out
-                                        </button>
-                                    </form>
                                 </div>
-                            }
+                                <div class="dropdown-divider"></div>
+                                <a href="#" class="dropdown-item" onclick="event.preventDefault()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                    Profile Settings
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <form action="Account/Logout" method="post">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="ReturnUrl" value="" />
+                                    <button type="submit" class="dropdown-item text-danger">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                                        Log out
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </Authorized>
                 </AuthorizeView>
@@ -206,31 +200,3 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
-
-@if (isWorkspaceMenuOpen || isAccountMenuOpen)
-{
-    <div class="dropdown-overlay" @onclick="CloseMenus"></div>
-}
-
-@code {
-    private bool isWorkspaceMenuOpen = false;
-    private bool isAccountMenuOpen = false;
-
-    private void ToggleWorkspaceMenu()
-    {
-        isWorkspaceMenuOpen = !isWorkspaceMenuOpen;
-        isAccountMenuOpen = false;
-    }
-
-    private void ToggleAccountMenu()
-    {
-        isAccountMenuOpen = !isAccountMenuOpen;
-        isWorkspaceMenuOpen = false;
-    }
-
-    private void CloseMenus()
-    {
-        isWorkspaceMenuOpen = false;
-        isAccountMenuOpen = false;
-    }
-}
