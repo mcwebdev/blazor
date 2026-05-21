@@ -1,0 +1,287 @@
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@inject IBoardService BoardService
+
+<div class="board-replay-panel @(IsOpen ? "open" : "")">
+    <header class="replay-header">
+        <div>
+            <p class="eyebrow">Board replay</p>
+            <h3>Activity timeline</h3>
+        </div>
+        <button type="button" class="close-btn" @onclick="Close">×</button>
+    </header>
+
+    <div class="replay-controls">
+        <div class="replay-range-selector">
+            @foreach (var range in TimeRanges)
+            {
+                <button type="button"
+                        class="btn btn-sm @(SelectedRange == range.Key ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="@(() => SelectRangeAsync(range.Key))">
+                    @range.Value
+                </button>
+            }
+        </div>
+
+        <div class="replay-playback">
+            <button type="button" class="replay-btn" @onclick="StepBackward" disabled="@(!CanStepBack)" title="Step back">
+                ⏮
+            </button>
+            <button type="button" class="replay-btn play-btn" @onclick="TogglePlayback" title="@(IsPlaying ? "Pause" : "Play")">
+                @(IsPlaying ? "⏸" : "▶")
+            </button>
+            <button type="button" class="replay-btn" @onclick="StepForward" disabled="@(!CanStepForward)" title="Step forward">
+                ⏭
+            </button>
+            <button type="button" class="replay-btn" @onclick="ResetPlayback" title="Reset">
+                ↺
+            </button>
+            <select class="replay-speed-select" @bind="PlaybackSpeed">
+                <option value="1">1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+            </select>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="replay-loading">
+            <p>Loading events…</p>
+        </div>
+    }
+    else if (Events.Count == 0)
+    {
+        <div class="replay-empty">
+            <p>No activity found in this time range.</p>
+        </div>
+    }
+    else
+    {
+        <div class="replay-progress-bar">
+            <div class="replay-progress-fill" style="width: @ProgressPercent%"></div>
+            <span class="replay-progress-label">@(CurrentIndex + 1) / @Events.Count</span>
+        </div>
+
+        <div class="replay-event-list">
+            @foreach (var (evt, index) in Events.Select((e, i) => (e, i)))
+            {
+                var isCurrent = index == CurrentIndex;
+                var isPast = index < CurrentIndex;
+                <div class="replay-event-item @(isCurrent ? "current" : "") @(isPast ? "past" : "")"
+                     @onclick="@(() => JumpTo(index))">
+                    <span class="replay-event-icon">@GetEventIcon(evt.EventType)</span>
+                    <div class="replay-event-content">
+                        <p class="replay-event-summary">@evt.Summary</p>
+                        <small class="replay-event-meta">@evt.ActorName · @evt.CreatedAtUtc.ToString("HH:mm:ss")</small>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (SelectedEvent is not null)
+        {
+            <div class="replay-event-inspector">
+                <h4>Event inspector</h4>
+                <div class="inspector-meta">
+                    <span class="inspector-badge">@SelectedEvent.EventType</span>
+                    <span>@SelectedEvent.ActorName</span>
+                    <span>@SelectedEvent.CreatedAtUtc.ToString("g")</span>
+                </div>
+                <div class="inspector-diff">
+                    @if (!string.IsNullOrWhiteSpace(SelectedEvent.BeforeJson))
+                    {
+                        <div class="inspector-section before">
+                            <h5>Before</h5>
+                            <pre>@FormatJson(SelectedEvent.BeforeJson)</pre>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(SelectedEvent.AfterJson))
+                    {
+                        <div class="inspector-section after">
+                            <h5>After</h5>
+                            <pre>@FormatJson(SelectedEvent.AfterJson)</pre>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid BoardId { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private IReadOnlyList<ReplayEventDto> Events = [];
+    private bool IsLoading;
+    private int CurrentIndex;
+    private bool IsPlaying;
+    private int PlaybackSpeed = 1;
+    private string SelectedRange = "30m";
+    private System.Timers.Timer? _playTimer;
+
+    private static readonly Dictionary<string, string> TimeRanges = new()
+    {
+        ["5m"] = "5 min",
+        ["30m"] = "30 min",
+        ["1d"] = "1 day",
+        ["all"] = "All"
+    };
+
+    private ReplayEventDto? SelectedEvent => Events.Count > 0 && CurrentIndex >= 0 && CurrentIndex < Events.Count
+        ? Events[CurrentIndex]
+        : null;
+
+    private bool CanStepBack => CurrentIndex > 0;
+    private bool CanStepForward => CurrentIndex < Events.Count - 1;
+    private double ProgressPercent => Events.Count > 0 ? (double)(CurrentIndex + 1) / Events.Count * 100 : 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && Events.Count == 0 && !IsLoading)
+        {
+            await LoadEventsAsync();
+        }
+    }
+
+    private async Task SelectRangeAsync(string range)
+    {
+        SelectedRange = range;
+        StopPlayback();
+        CurrentIndex = 0;
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        IsLoading = true;
+        StateHasChanged();
+
+        var since = SelectedRange switch
+        {
+            "5m" => DateTime.UtcNow.AddMinutes(-5),
+            "30m" => DateTime.UtcNow.AddMinutes(-30),
+            "1d" => DateTime.UtcNow.AddDays(-1),
+            _ => DateTime.MinValue
+        };
+
+        Events = await BoardService.GetReplayEventsAsync(BoardId, since);
+        CurrentIndex = 0;
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    private void TogglePlayback()
+    {
+        if (IsPlaying)
+        {
+            StopPlayback();
+        }
+        else
+        {
+            StartPlayback();
+        }
+    }
+
+    private void StartPlayback()
+    {
+        if (Events.Count == 0) return;
+        if (CurrentIndex >= Events.Count - 1) CurrentIndex = 0;
+
+        IsPlaying = true;
+        _playTimer = new System.Timers.Timer(1000.0 / PlaybackSpeed);
+        _playTimer.Elapsed += async (_, _) =>
+        {
+            await InvokeAsync(() =>
+            {
+                if (CurrentIndex < Events.Count - 1)
+                {
+                    CurrentIndex++;
+                    StateHasChanged();
+                }
+                else
+                {
+                    StopPlayback();
+                    StateHasChanged();
+                }
+            });
+        };
+        _playTimer.Start();
+    }
+
+    private void StopPlayback()
+    {
+        IsPlaying = false;
+        _playTimer?.Stop();
+        _playTimer?.Dispose();
+        _playTimer = null;
+    }
+
+    private void StepForward()
+    {
+        if (CanStepForward)
+        {
+            StopPlayback();
+            CurrentIndex++;
+        }
+    }
+
+    private void StepBackward()
+    {
+        if (CanStepBack)
+        {
+            StopPlayback();
+            CurrentIndex--;
+        }
+    }
+
+    private void JumpTo(int index)
+    {
+        StopPlayback();
+        CurrentIndex = index;
+    }
+
+    private void ResetPlayback()
+    {
+        StopPlayback();
+        CurrentIndex = 0;
+    }
+
+    private void Close()
+    {
+        StopPlayback();
+        OnClose.InvokeAsync();
+    }
+
+    private static string GetEventIcon(string eventType) => eventType switch
+    {
+        "TaskCreated" => "✨",
+        "TaskUpdated" => "✏️",
+        "TaskMoved" => "↔️",
+        "TaskDeleted" => "🗑️",
+        "TaskAssigned" => "👤",
+        "TaskCompleted" => "✅",
+        "CommentAdded" => "💬",
+        "TaskPriorityChanged" => "🔺",
+        "TaskDueDateChanged" => "📅",
+        _ => "📋"
+    };
+
+    private static string FormatJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return "";
+        try
+        {
+            var parsed = System.Text.Json.JsonDocument.Parse(json);
+            return System.Text.Json.JsonSerializer.Serialize(
+                parsed, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+}

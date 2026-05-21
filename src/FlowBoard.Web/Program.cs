@@ -11,6 +11,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<BoardUpdateNotifier>();
+builder.Services.AddSingleton<FlowBoard.Application.Interfaces.IPresenceService, FlowBoard.Infrastructure.Services.PresenceService>();
 builder.Services.AddScoped<AppActionDispatcher>();
 
 builder.Services.AddHttpContextAccessor();

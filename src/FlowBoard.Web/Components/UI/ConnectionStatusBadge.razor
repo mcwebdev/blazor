@@ -1,0 +1,25 @@
+@using Microsoft.AspNetCore.SignalR.Client
+
+<div class="connection-badge @StateClass">
+    <span class="connection-dot"></span>
+    <span class="connection-label">@Label</span>
+</div>
+
+@code {
+    [Parameter]
+    public HubConnectionState State { get; set; } = HubConnectionState.Disconnected;
+
+    private string StateClass => State switch
+    {
+        HubConnectionState.Connected => "connected",
+        HubConnectionState.Reconnecting => "reconnecting",
+        _ => "disconnected"
+    };
+
+    private string Label => State switch
+    {
+        HubConnectionState.Connected => "Live",
+        HubConnectionState.Reconnecting => "Reconnecting…",
+        _ => "Offline"
+    };
+}

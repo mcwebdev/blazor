@@ -14,7 +14,25 @@ public sealed record TaskCardDto(
     int CommentCount,
     int ChecklistCompleteCount,
     int ChecklistTotalCount,
+    int SortOrder,
+    IReadOnlyList<TaskLabelDto> Labels);
+
+public sealed record TaskChecklistItemDto(
+    Guid Id,
+    string Text,
+    bool IsComplete,
     int SortOrder);
+
+public sealed record TaskLabelDto(
+    Guid Id,
+    string Name,
+    string Color);
+
+public sealed record TaskCommentDto(
+    Guid Id,
+    string Body,
+    string AuthorName,
+    DateTime CreatedAtUtc);
 
 public class TaskDetailDto
 {
@@ -30,6 +48,10 @@ public class TaskDetailDto
     public DateTime? DueDateUtc { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
+    public IReadOnlyList<TaskLabelDto> Labels { get; set; } = [];
+    public IReadOnlyList<TaskChecklistItemDto> Checklists { get; set; } = [];
+    public IReadOnlyList<TaskCommentDto> Comments { get; set; } = [];
+
     public TaskDetailDto() { }
 
     public TaskDetailDto(
@@ -43,7 +65,10 @@ public class TaskDetailDto
         string? assigneeName,
         string? assigneeUserId,
         DateTime? dueDateUtc,
-        byte[] rowVersion)
+        byte[] rowVersion,
+        IReadOnlyList<TaskLabelDto>? labels = null,
+        IReadOnlyList<TaskChecklistItemDto>? checklists = null,
+        IReadOnlyList<TaskCommentDto>? comments = null)
     {
         Id = id;
         BoardId = boardId;
@@ -56,6 +81,9 @@ public class TaskDetailDto
         AssigneeUserId = assigneeUserId;
         DueDateUtc = dueDateUtc;
         RowVersion = rowVersion;
+        Labels = labels ?? [];
+        Checklists = checklists ?? [];
+        Comments = comments ?? [];
     }
 }
 
@@ -73,6 +101,10 @@ public class CreateTaskDto
 public sealed record BoardMemberDto(
     string UserId,
     string DisplayName);
+
+public sealed record BoardPresenceDto(
+    string UserId,
+    string Name);
 
 public sealed record BoardColumnDto(
     Guid Id,
@@ -108,3 +140,13 @@ public sealed record ActivityEntryDto(
     string Summary,
     string ActorName,
     DateTime CreatedAtUtc);
+
+public sealed record ReplayEventDto(
+    Guid Id,
+    long SequenceNumber,
+    string EventType,
+    string Summary,
+    string ActorName,
+    DateTime CreatedAtUtc,
+    string? BeforeJson,
+    string? AfterJson);

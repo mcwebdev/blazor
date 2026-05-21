@@ -1,6 +1,6 @@
 # FlowBoard Progress Tracker
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 This file is the handoff document for future sessions. Read it before changing code.
 
@@ -30,9 +30,9 @@ blazor  -> blazor-5c3d4
 
 ## Current Status
 
-Current phase: Phase 2 - Features in progress.
+Current phase: Phase 5 - Signature Collaboration features in progress.
 
-The foundational backend is built and the demo board now supports live moves, edits, and task creation from the app shell.
+The foundational backend is built and the demo board now supports live moves, edits, and task creation from the app shell. Real-time presence indicators and SignalR hub architecture are operational. Field-level editing indicators and conflict resolution are implemented.
 
 Completed:
 
@@ -121,7 +121,53 @@ Google Cloud:
 
 ## Next Steps
 
-Next recommended task: build the board filter/search surface and start extracting the board page into smaller components (`BoardColumn`, `TaskCard`, `TaskFilterBar`) before adding comments/checklists.
+Next recommended task: Phase 5 Part 2 — Board Replay / Command Palette / remaining signature collaboration features.
+
+## Phase 5 Part 1: Editing Indicators & Conflict Resolution (Completed)
+
+- [x] Added `UserStartedEditing` / `UserStoppedEditing` to `IBoardClient.cs` typed hub interface.
+- [x] Added `StartEditing` / `StopEditing` server-side hub methods to `BoardHub.cs`.
+- [x] Wired `TaskDrawer.razor` focus/blur events on Title and Description to broadcast editing state via SignalR.
+- [x] Added real-time `ActiveEditors` dictionary tracking and inline "X is editing" indicators with pulse animation.
+- [x] `TaskDrawer.razor` now receives the parent `HubConnection` as a parameter and subscribes to editing events.
+- [x] `DbUpdateConcurrencyException` is now caught in `SaveAsync` and triggers a conflict resolution modal.
+- [x] Conflict Resolution Modal inline in `TaskDrawer.razor` with "Overwrite with My Changes" and "Discard My Changes" options.
+- [x] Added `ForceUpdateTaskAsync` to `IBoardService` + `BoardService` that bypasses RowVersion concurrency to support overwrite.
+- [x] CSS added: `.field-editing-indicator` with pulse animation, `.conflict-modal` with backdrop blur.
+- [x] Build verified: 0 warnings, 0 errors.
+
+## Phase 4: Real-Time Presence & SignalR Architecture (Completed)
+
+- [x] Created `IPresenceService` / `PresenceService` singleton for in-memory board presence tracking.
+- [x] Refactored `BoardHub` to typed `Hub<IBoardClient>` with `JoinBoard`, `LeaveBoard`, `OnDisconnectedAsync`.
+- [x] Created `PresenceAvatarStack.razor` component for visual collaborator display.
+- [x] Integrated `HubConnection` in `Board.razor` with automatic reconnect and group-based notifications.
+- [x] Cleaned up `BoardUpdateNotifier` to use typed `IHubContext<BoardHub, IBoardClient>`.
+
+## Phase 3 Part 3: Task Labels (Completed)
+
+- [x] Extended `FlowBoardDtos.cs` to include `TaskLabelDto` and `Labels` collections.
+- [x] Implemented `GetLabelsForBoardAsync` and `ToggleTaskLabelAsync` in `BoardService.cs`.
+- [x] Updated `GetBoardAsync` and `GetTaskAsync` with EF Core split-query eager loading for task labels.
+- [x] Updated `TaskCard.razor` to display label pills.
+- [x] Added interactive Labels section to `TaskDrawer.razor` to toggle labels on a task.
+
+## Phase 3 Part 2: Task Comments and Checklists (Completed)
+
+- [x] Extended `FlowBoardDtos.cs` and `TaskDetailDto` to support Checklists and Comments.
+- [x] Implemented `AddChecklistItemAsync`, `ToggleChecklistItemAsync`, and `AddCommentAsync` in `BoardService.cs`.
+- [x] Updated `GetTaskDetailAsync` with EF Core split-query eager loading for checklists and comments.
+- [x] Added interactive Checklists and Comments sections to `TaskDrawer.razor`.
+- [x] Wired UI logic back to the injected `IBoardService` and `ICurrentUserService`.
+
+## Phase 3 Part 1: Component Refactoring & Filtering (Completed)
+
+- [x] Extract `TaskFilterBar.razor` UI component.
+- [x] Extract `TaskCard.razor` UI component.
+- [x] Extract `BoardColumn.razor` UI component.
+- [x] Refactor `Board.razor` to use extracted components.
+- [x] Implement client-side filtering logic based on `TaskFilterCriteria`.
+- [x] Verify drag-and-drop and real-time operations still function correctly.
 
 ## Phase 2: Core Interactivity & Live Operations
 
@@ -264,4 +310,20 @@ Next recommended task: build the board filter/search surface and start extractin
   - Live status badge and `Board pulse` showed the created-task activity.
   - Browser console only showed normal Blazor connection info after reload.
 
-Next recommended task: build the board filter/search surface and start extracting the board page into smaller components (`BoardColumn`, `TaskCard`, `TaskFilterBar`) before adding comments/checklists.
+### 2026-05-20 - Phase 3 Part 1: Component Refactoring & Filtering
+
+- Created `TaskFilterCriteria` model to support text search, priority, and assignee filtering.
+- Extracted monolithic board rendering into modular components: `BoardColumn.razor`, `TaskCard.razor`, and `TaskFilterBar.razor`.
+- Refactored `Board.razor` to use the new components and perform fast client-side filtering of task collections before rendering.
+- Passed down interactive server callbacks (drag-and-drop, task drawer opening) successfully.
+- Verified compilation and runtime behavior; filtering updates instantaneously.
+
+Next recommended task: Move to Phase 4.
+
+### 2026-05-20 - Phase 3 Part 2 & 3: Checklists, Comments, and Labels
+
+- Added full domain models and DTOs for checklists, comments, and task labels.
+- Wired up backend mutation services with real-time logging and optimistic concurrency support.
+- Updated `TaskDrawer` to support adding, toggling, and viewing checklists, comments, and task labels.
+- Updated `TaskCard` to show selected labels.
+- Confirmed the updated application builds successfully with no warnings.

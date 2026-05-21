@@ -9,7 +9,18 @@ public interface IBoardService
     Task<IReadOnlyList<ActivityEntryDto>> GetRecentActivityForBoardAsync(Guid boardId, int take = 12);
     Task<IReadOnlyList<BoardMemberDto>> GetBoardMembersAsync(Guid boardId);
     Task<TaskDetailDto?> GetTaskAsync(Guid taskId);
-    Task<TaskDetailDto> CreateTaskAsync(CreateTaskDto task);
-    Task UpdateTaskAsync(TaskDetailDto task);
-    Task MoveTaskAsync(Guid taskId, Guid newColumnId, int newSortOrder);
+    Task<TaskDetailDto> CreateTaskAsync(CreateTaskDto dto);
+    Task UpdateTaskAsync(TaskDetailDto dto);
+    Task ForceUpdateTaskAsync(TaskDetailDto dto);
+    Task<IReadOnlyList<ReplayEventDto>> GetReplayEventsAsync(Guid boardId, DateTime since);
+    Task MoveTaskAsync(Guid taskId, Guid targetColumnId, int newSortOrder);
+
+    // Checklists & Comments
+    Task<TaskChecklistItemDto> AddChecklistItemAsync(Guid taskId, string text, string actorUserId);
+    Task ToggleChecklistItemAsync(Guid itemId, bool isComplete, string actorUserId);
+    Task<TaskCommentDto> AddCommentAsync(Guid taskId, string body, string actorUserId);
+
+    // Labels
+    Task<IReadOnlyList<TaskLabelDto>> GetLabelsForBoardAsync(Guid boardId);
+    Task ToggleTaskLabelAsync(Guid taskId, Guid labelId, bool isApplied, string actorUserId);
 }

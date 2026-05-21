@@ -7,9 +7,13 @@
 @using FlowBoard.Infrastructure.Data
 @using FlowBoard.Web.Hubs
 @using FlowBoard.Web.Services
+@using FlowBoard.Web.Models
+@using FlowBoard.Web.Components.UI
+@using Microsoft.AspNetCore.SignalR.Client
 @inject IBoardService BoardService
 @inject BoardUpdateNotifier BoardUpdates
 @inject AppActionDispatcher AppActions
+@inject NavigationManager Navigation
 
 <PageTitle>@(BoardData?.Name ?? "Board") - FlowBoard</PageTitle>
 
@@ -42,58 +46,31 @@ else
             }
         </div>
         <div class="board-header-actions">
-            <span class="board-live-badge">@LiveStatusText</span>
+            <PresenceAvatarStack Users="ActiveUsers" />
+            <ConnectionStatusBadge State="ConnectionState" />
+            <button type="button" class="btn btn-outline-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" @onclick="ToggleReplay">
+                @(ShowReplayPanel ? "Close Replay" : "⏱ Replay")
+            </button>
             <button type="button" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Board Settings</button>
         </div>
     </div>
 
     <section class="board-workspace">
-        <div class="kanban-preview board-kanban">
-            @foreach (var col in BoardData.Columns.OrderBy(c => c.SortOrder))
-            {
-                <div class="kanban-column"
-                     ondragover="event.preventDefault();"
-                     @ondrop="() => HandleDropAsync(col.Id)">
-                    <header>
-                        <h3>@col.Name</h3>
-                        <span>@col.Tasks.Count</span>
-                    </header>
+        <div class="board-main-content" style="display: flex; flex-direction: column; gap: 1rem;">
+            <TaskFilterBar BoardMembers="BoardMembers" OnFilterChanged="HandleFilterChanged" />
 
-                    @foreach (var task in col.Tasks.OrderBy(t => t.SortOrder))
-                    {
-                        <div class="task-card" draggable="true"
-                             @ondragstart="() => HandleDragStart(task)"
-                             @onclick="() => OpenTaskDrawer(task.Id)">
-                            <div class="task-card-meta">
-                                <span class="priority @task.Priority.ToString().ToLower()">@task.Priority</span>
-                                @if (!string.IsNullOrEmpty(task.AssigneeName))
-                                {
-                                    <span class="user-avatar compact" title="@task.AssigneeName">
-                                        @GetInitials(task.AssigneeName)
-                                    </span>
-                                }
-                            </div>
-                            <h4>@task.Title</h4>
-                            <div class="task-card-footer">
-                                @if (task.DueDateUtc is not null)
-                                {
-                                    <span class="task-due @(task.DueDateUtc.Value < DateTime.UtcNow && task.Status != FlowBoard.Domain.Enums.TaskItemStatus.Done ? "overdue" : "")">
-                                        Due @FormatTaskDate(task.DueDateUtc.Value)
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span>@(task.CommentCount > 0 ? $"Comments {task.CommentCount}" : "")</span>
-                                }
-                                @if (task.ChecklistTotalCount > 0)
-                                {
-                                    <span>Checklist @task.ChecklistCompleteCount/@task.ChecklistTotalCount</span>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
+            <div class="kanban-preview board-kanban">
+                @foreach (var col in BoardData.Columns.OrderBy(c => c.SortOrder))
+                {
+                    var filteredTasks = GetFilteredTasks(col).ToList();
+                    <BoardColumn Column="col" TaskCount="filteredTasks.Count" OnDrop="HandleDropAsync">
+                        @foreach (var task in filteredTasks)
+                        {
+                            <TaskCard @key="task.Id" Task="task" OnDragStart="HandleDragStart" OnClick="() => OpenTaskDrawer(task.Id)" />
+                        }
+                    </BoardColumn>
+                }
+            </div>
         </div>
 
         <aside class="board-activity-panel" aria-label="Board activity">
@@ -124,7 +101,8 @@ else
         </aside>
     </section>
 
-    <TaskDrawer @ref="taskDrawer" OnTaskSaved="HandleTaskSavedAsync" />
+    <TaskDrawer @ref="taskDrawer" OnTaskSaved="HandleTaskSavedAsync" HubConnection="hubConnection" />
+    <BoardReplayPanel BoardId="BoardData.Id" IsOpen="ShowReplayPanel" OnClose="() => ShowReplayPanel = false" />
 }
 
 @code {
@@ -138,12 +116,93 @@ else
     
     private TaskCardDto? DraggedTask;
     private TaskDrawer? taskDrawer;
+    private TaskFilterCriteria Filter = new();
+    private IReadOnlyList<BoardMemberDto> BoardMembers = [];
+    private IReadOnlyList<BoardPresenceDto> ActiveUsers = [];
+    private HubConnection? hubConnection;
+    private HubConnectionState ConnectionState = HubConnectionState.Disconnected;
+    private bool ShowReplayPanel;
 
     protected override async Task OnInitializedAsync()
     {
-        BoardUpdates.BoardChanged += HandleBoardChangedAsync;
         AppActions.NewTaskRequested += OpenCreateTaskDrawerAsync;
         await LoadBoardDataAsync();
+        await InitializeSignalRAsync();
+    }
+
+    private async Task InitializeSignalRAsync()
+    {
+        if (BoardData is null)
+            return;
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hub/board"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<BoardRealtimeEvent>("BoardActivityRecorded", async (change) =>
+        {
+            if (change.BoardId != BoardData.Id)
+                return;
+
+            await InvokeAsync(async () =>
+            {
+                LiveStatusText = change.Summary;
+                await LoadBoardDataAsync();
+                StateHasChanged();
+            });
+        });
+
+        hubConnection.On<IReadOnlyList<BoardPresenceDto>>("UserJoinedBoard", async (users) =>
+        {
+            await InvokeAsync(() =>
+            {
+                ActiveUsers = users;
+                StateHasChanged();
+            });
+        });
+
+        hubConnection.On<IReadOnlyList<BoardPresenceDto>>("UserLeftBoard", async (users) =>
+        {
+            await InvokeAsync(() =>
+            {
+                ActiveUsers = users;
+                StateHasChanged();
+            });
+        });
+
+        hubConnection.Reconnecting += async (_) =>
+        {
+            await InvokeAsync(() =>
+            {
+                ConnectionState = HubConnectionState.Reconnecting;
+                StateHasChanged();
+            });
+        };
+
+        hubConnection.Reconnected += async (_) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                ConnectionState = HubConnectionState.Connected;
+                if (BoardData is not null)
+                    await hubConnection.SendAsync("JoinBoard", BoardData.Id);
+                StateHasChanged();
+            });
+        };
+
+        hubConnection.Closed += async (_) =>
+        {
+            await InvokeAsync(() =>
+            {
+                ConnectionState = HubConnectionState.Disconnected;
+                StateHasChanged();
+            });
+        };
+
+        await hubConnection.StartAsync();
+        ConnectionState = HubConnectionState.Connected;
+        await hubConnection.SendAsync("JoinBoard", BoardData.Id);
     }
 
     private async Task LoadBoardDataAsync()
@@ -164,7 +223,46 @@ else
             ? []
             : await BoardService.GetRecentActivityForBoardAsync(BoardData.Id);
 
+        BoardMembers = BoardData is null
+            ? []
+            : await BoardService.GetBoardMembersAsync(BoardData.Id);
+
         IsLoading = false;
+    }
+
+    private void HandleFilterChanged(TaskFilterCriteria criteria)
+    {
+        Filter = criteria;
+    }
+
+    private IEnumerable<TaskCardDto> GetFilteredTasks(BoardColumnDto col)
+    {
+        var query = col.Tasks.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(Filter.SearchText))
+        {
+            var search = Filter.SearchText.ToLowerInvariant();
+            query = query.Where(t => t.Title.ToLowerInvariant().Contains(search));
+        }
+
+        if (Filter.Priority.HasValue)
+        {
+            query = query.Where(t => t.Priority == Filter.Priority.Value);
+        }
+
+        if (!string.IsNullOrEmpty(Filter.AssigneeUserId))
+        {
+            if (Filter.AssigneeUserId == "unassigned")
+            {
+                query = query.Where(t => string.IsNullOrEmpty(t.AssigneeUserId));
+            }
+            else
+            {
+                query = query.Where(t => t.AssigneeUserId == Filter.AssigneeUserId);
+            }
+        }
+
+        return query.OrderBy(t => t.SortOrder);
     }
     
     private void HandleDragStart(TaskCardDto task)
@@ -211,6 +309,11 @@ else
         await NotifyBoardChangedAsync(args.EventType, args.Summary);
     }
 
+    private void ToggleReplay()
+    {
+        ShowReplayPanel = !ShowReplayPanel;
+    }
+
     private Task NotifyBoardChangedAsync(string eventType, string summary)
     {
         if (BoardData is null)
@@ -222,19 +325,6 @@ else
             eventType,
             summary,
             DateTime.UtcNow));
-    }
-
-    private Task HandleBoardChangedAsync(BoardRealtimeEvent change)
-    {
-        if (BoardData is null || change.BoardId != BoardData.Id)
-            return Task.CompletedTask;
-
-        return InvokeAsync(async () =>
-        {
-            LiveStatusText = change.Summary;
-            await LoadBoardDataAsync();
-            StateHasChanged();
-        });
     }
 
     private static string GetInitials(string value)
@@ -272,10 +362,17 @@ else
         return dueDateUtc.ToString("MMM d");
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        BoardUpdates.BoardChanged -= HandleBoardChangedAsync;
+        if (hubConnection is not null)
+        {
+            if (BoardData is not null)
+            {
+                await hubConnection.SendAsync("LeaveBoard", BoardData.Id);
+            }
+            await hubConnection.DisposeAsync();
+        }
+        
         AppActions.NewTaskRequested -= OpenCreateTaskDrawerAsync;
-        return ValueTask.CompletedTask;
     }
 }

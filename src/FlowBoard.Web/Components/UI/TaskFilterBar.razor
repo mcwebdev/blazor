@@ -1,0 +1,61 @@
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Domain.Enums
+@using FlowBoard.Web.Models
+
+<div class="task-filter-bar">
+    <div class="filter-group search-group">
+        <input type="search" class="form-control" placeholder="Search tasks..."
+               @bind="Criteria.SearchText" @bind:event="oninput" @bind:after="NotifyChanged" />
+    </div>
+    
+    <div class="filter-group">
+        <select class="form-select" @bind="Criteria.AssigneeUserId" @bind:after="NotifyChanged">
+            <option value="">Any Assignee</option>
+            <option value="unassigned">Unassigned</option>
+            @foreach (var member in BoardMembers)
+            {
+                <option value="@member.UserId">@member.DisplayName</option>
+            }
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <select class="form-select" @bind="Criteria.Priority" @bind:after="NotifyChanged">
+            <option value="">Any Priority</option>
+            @foreach (var p in Enum.GetValues<TaskPriority>())
+            {
+                <option value="@p">@p</option>
+            }
+        </select>
+    </div>
+
+    @if (IsFiltered)
+    {
+        <button type="button" class="btn btn-secondary btn-clear" @onclick="ClearFilters">Clear</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<BoardMemberDto> BoardMembers { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<TaskFilterCriteria> OnFilterChanged { get; set; }
+
+    public TaskFilterCriteria Criteria { get; private set; } = new();
+
+    private bool IsFiltered => !string.IsNullOrWhiteSpace(Criteria.SearchText) || 
+                               Criteria.Priority.HasValue || 
+                               !string.IsNullOrEmpty(Criteria.AssigneeUserId);
+
+    private Task NotifyChanged()
+    {
+        return OnFilterChanged.InvokeAsync(Criteria);
+    }
+
+    private async Task ClearFilters()
+    {
+        Criteria = new TaskFilterCriteria();
+        await NotifyChanged();
+    }
+}

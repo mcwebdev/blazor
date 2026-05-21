@@ -1,0 +1,31 @@
+@using FlowBoard.Application.DTOs
+
+<div class="kanban-column"
+     ondragover="event.preventDefault();"
+     @ondrop="HandleDrop">
+    <header>
+        <h3>@Column.Name</h3>
+        <span>@TaskCount</span>
+    </header>
+
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public BoardColumnDto Column { get; set; } = default!;
+
+    [Parameter]
+    public int TaskCount { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnDrop { get; set; }
+
+    private Task HandleDrop()
+    {
+        return OnDrop.InvokeAsync(Column.Id);
+    }
+}

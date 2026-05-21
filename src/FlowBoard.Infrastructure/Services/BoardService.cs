@@ -23,6 +23,8 @@ public class BoardService : IBoardService
         var board = await _db.Boards
             .Include(b => b.Columns.OrderBy(c => c.SortOrder))
                 .ThenInclude(c => c.Tasks.OrderBy(t => t.SortOrder))
+                    .ThenInclude(t => t.TaskLabels)
+                        .ThenInclude(til => til.TaskLabel)
             .AsSplitQuery()
             .AsNoTracking()
             .FirstOrDefaultAsync(b => b.Id == boardId);
@@ -64,7 +66,8 @@ public class BoardService : IBoardService
                     0, // comment count — will be filled when comments are loaded
                     0,
                     0,
-                    t.SortOrder
+                    t.SortOrder,
+                    t.TaskLabels.Select(l => new TaskLabelDto(l.TaskLabel.Id, l.TaskLabel.Name, l.TaskLabel.Color)).ToList()
                 )).ToList()
             )).ToList()
         );
@@ -125,6 +128,50 @@ public class BoardService : IBoardService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ReplayEventDto>> GetReplayEventsAsync(Guid boardId, DateTime since)
+    {
+        var events = await _db.ActivityLogs
+            .Where(a => a.BoardId == boardId && a.CreatedAtUtc >= since)
+            .OrderBy(a => a.SequenceNumber)
+            .Select(a => new
+            {
+                a.Id,
+                a.SequenceNumber,
+                EventType = a.EventType.ToString(),
+                a.Summary,
+                a.ActorUserId,
+                a.CreatedAtUtc,
+                a.BeforeJson,
+                a.AfterJson
+            })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var actorIds = events
+            .Select(e => e.ActorUserId)
+            .Where(id => id != "system")
+            .Distinct()
+            .ToList();
+
+        var actorNames = await _db.Users
+            .Where(u => actorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayName);
+
+        return events
+            .Select(e => new ReplayEventDto(
+                e.Id,
+                e.SequenceNumber,
+                e.EventType,
+                e.Summary,
+                actorNames.TryGetValue(e.ActorUserId, out var name)
+                    ? name
+                    : e.ActorUserId == "system" ? "System" : "Unknown",
+                e.CreatedAtUtc,
+                e.BeforeJson,
+                e.AfterJson))
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<BoardMemberDto>> GetBoardMembersAsync(Guid boardId)
     {
         var workspaceId = await _db.Boards
@@ -151,6 +198,11 @@ public class BoardService : IBoardService
     public async Task<TaskDetailDto?> GetTaskAsync(Guid taskId)
     {
         var task = await _db.TaskItems
+            .Include(t => t.ChecklistItems.OrderBy(c => c.SortOrder))
+            .Include(t => t.Comments.OrderBy(c => c.CreatedAtUtc))
+            .Include(t => t.TaskLabels)
+                .ThenInclude(til => til.TaskLabel)
+            .AsSplitQuery()
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == taskId);
 
@@ -164,6 +216,31 @@ public class BoardService : IBoardService
             assigneeName = user?.DisplayName;
         }
 
+        var commentUserIds = task.Comments.Select(c => c.UserId).Distinct().ToList();
+        var commentUserNames = await _db.Users
+            .Where(u => commentUserIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayName);
+
+        var checklists = task.ChecklistItems.Select(c => new TaskChecklistItemDto(
+            c.Id,
+            c.Text,
+            c.IsComplete,
+            c.SortOrder
+        )).ToList();
+
+        var comments = task.Comments.Select(c => new TaskCommentDto(
+            c.Id,
+            c.Body,
+            commentUserNames.TryGetValue(c.UserId, out var name) ? name : "Unknown",
+            c.CreatedAtUtc
+        )).ToList();
+
+        var labels = task.TaskLabels.Select(l => new TaskLabelDto(
+            l.TaskLabel.Id,
+            l.TaskLabel.Name,
+            l.TaskLabel.Color
+        )).ToList();
+
         return new TaskDetailDto(
             task.Id,
             task.BoardId,
@@ -175,7 +252,10 @@ public class BoardService : IBoardService
             assigneeName,
             task.AssigneeUserId,
             task.DueDateUtc,
-            task.RowVersion
+            task.RowVersion,
+            labels,
+            checklists,
+            comments
         );
     }
 
@@ -308,6 +388,60 @@ public class BoardService : IBoardService
                 task.DueDateUtc
             });
         
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task ForceUpdateTaskAsync(TaskDetailDto taskDto)
+    {
+        var task = await _db.TaskItems.FindAsync(taskDto.Id);
+        if (task is null)
+            return;
+
+        var title = taskDto.Title.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            throw new InvalidOperationException("Task title is required.");
+
+        // Use the current RowVersion from DB — no concurrency check needed
+        // (We intentionally skip setting OriginalValue on RowVersion)
+
+        task.Title = title;
+        task.Description = NormalizeOptionalText(taskDto.Description);
+        task.Priority = taskDto.Priority;
+        task.Status = taskDto.Status;
+        task.AssigneeUserId = NormalizeOptionalText(taskDto.AssigneeUserId);
+        task.DueDateUtc = NormalizeDueDate(taskDto.DueDateUtc);
+        task.CompletedAtUtc = taskDto.Status == TaskItemStatus.Done
+            ? task.CompletedAtUtc ?? DateTime.UtcNow
+            : null;
+
+        var statusColumn = await GetColumnForStatusAsync(task.BoardId, taskDto.Status);
+        if (statusColumn is not null && statusColumn.Id != task.ColumnId)
+        {
+            task.ColumnId = statusColumn.Id;
+            task.SortOrder = await GetNextSortOrderAsync(statusColumn.Id);
+        }
+
+        task.LastModifiedByUserId = _currentUser.UserId;
+        task.UpdatedAtUtc = DateTime.UtcNow;
+        task.RowVersion = Guid.NewGuid().ToByteArray();
+
+        var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
+        await RecordActivityAsync(
+            workspaceId,
+            task.BoardId,
+            task.Id,
+            ActivityEventType.TaskUpdated,
+            $"Updated {task.Title} (force overwrite).",
+            new { },
+            new
+            {
+                task.Title,
+                task.Priority,
+                task.Status,
+                task.AssigneeUserId,
+                task.DueDateUtc
+            });
+
         await _db.SaveChangesAsync();
     }
 
@@ -451,5 +585,158 @@ public class BoardService : IBoardService
             AfterJson = System.Text.Json.JsonSerializer.Serialize(after),
             CreatedAtUtc = DateTime.UtcNow
         });
+    }
+
+    public async Task<TaskChecklistItemDto> AddChecklistItemAsync(Guid taskId, string text, string actorUserId)
+    {
+        var task = await _db.TaskItems.FindAsync(taskId);
+        if (task is null)
+            throw new InvalidOperationException("Task not found.");
+
+        var maxSortOrder = await _db.ChecklistItems
+            .Where(c => c.TaskItemId == taskId)
+            .Select(c => (int?)c.SortOrder)
+            .MaxAsync();
+
+        var item = new ChecklistItem
+        {
+            Id = Guid.NewGuid(),
+            TaskItemId = taskId,
+            Text = text.Trim(),
+            IsComplete = false,
+            SortOrder = maxSortOrder.GetValueOrDefault(-1) + 1
+        };
+
+        _db.ChecklistItems.Add(item);
+        task.UpdatedAtUtc = DateTime.UtcNow;
+
+        var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
+        await RecordActivityAsync(
+            workspaceId,
+            task.BoardId,
+            task.Id,
+            ActivityEventType.TaskUpdated,
+            $"Added checklist item to {task.Title}.",
+            new { },
+            new { ChecklistItem = item.Text });
+
+        await _db.SaveChangesAsync();
+
+        return new TaskChecklistItemDto(item.Id, item.Text, item.IsComplete, item.SortOrder);
+    }
+
+    public async Task ToggleChecklistItemAsync(Guid itemId, bool isComplete, string actorUserId)
+    {
+        var item = await _db.ChecklistItems
+            .Include(c => c.TaskItem)
+            .FirstOrDefaultAsync(c => c.Id == itemId);
+            
+        if (item is null)
+            return;
+
+        if (item.IsComplete == isComplete)
+            return;
+
+        item.IsComplete = isComplete;
+        item.TaskItem.UpdatedAtUtc = DateTime.UtcNow;
+
+        var workspaceId = await GetWorkspaceIdForBoardAsync(item.TaskItem.BoardId);
+        await RecordActivityAsync(
+            workspaceId,
+            item.TaskItem.BoardId,
+            item.TaskItem.Id,
+            ActivityEventType.TaskUpdated,
+            $"Marked checklist item '{item.Text}' as {(isComplete ? "complete" : "incomplete")}.",
+            new { },
+            new { ChecklistItem = item.Text, IsComplete = isComplete });
+
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<TaskCommentDto> AddCommentAsync(Guid taskId, string body, string actorUserId)
+    {
+        var task = await _db.TaskItems.FindAsync(taskId);
+        if (task is null)
+            throw new InvalidOperationException("Task not found.");
+
+        var user = await _db.Users.FindAsync(actorUserId);
+        if (user is null)
+            throw new InvalidOperationException("User not found.");
+
+        var comment = new TaskComment
+        {
+            Id = Guid.NewGuid(),
+            TaskItemId = taskId,
+            UserId = actorUserId,
+            Body = body.Trim(),
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        _db.TaskComments.Add(comment);
+        task.UpdatedAtUtc = DateTime.UtcNow;
+
+        var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
+        await RecordActivityAsync(
+            workspaceId,
+            task.BoardId,
+            task.Id,
+            ActivityEventType.CommentAdded,
+            $"Commented on {task.Title}.",
+            new { },
+            new { CommentBody = comment.Body });
+
+        await _db.SaveChangesAsync();
+
+        return new TaskCommentDto(comment.Id, comment.Body, user.DisplayName, comment.CreatedAtUtc);
+    }
+
+    public async Task<IReadOnlyList<TaskLabelDto>> GetLabelsForBoardAsync(Guid boardId)
+    {
+        var workspaceId = await GetWorkspaceIdForBoardAsync(boardId);
+        return await _db.TaskLabels
+            .Where(l => l.WorkspaceId == workspaceId)
+            .OrderBy(l => l.Name)
+            .Select(l => new TaskLabelDto(l.Id, l.Name, l.Color))
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    public async Task ToggleTaskLabelAsync(Guid taskId, Guid labelId, bool isApplied, string actorUserId)
+    {
+        var task = await _db.TaskItems.FindAsync(taskId);
+        if (task is null) return;
+
+        var label = await _db.TaskLabels.FindAsync(labelId);
+        if (label is null) return;
+
+        var existing = await _db.TaskItemLabels
+            .FirstOrDefaultAsync(til => til.TaskItemId == taskId && til.TaskLabelId == labelId);
+
+        if (isApplied && existing is null)
+        {
+            _db.TaskItemLabels.Add(new TaskItemLabel { TaskItemId = taskId, TaskLabelId = labelId });
+        }
+        else if (!isApplied && existing is not null)
+        {
+            _db.TaskItemLabels.Remove(existing);
+        }
+        else
+        {
+            return; // No change
+        }
+
+        task.UpdatedAtUtc = DateTime.UtcNow;
+        var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
+        
+        await RecordActivityAsync(
+            workspaceId,
+            task.BoardId,
+            task.Id,
+            ActivityEventType.TaskUpdated,
+            $"{(isApplied ? "Added" : "Removed")} label '{label.Name}' on {task.Title}.",
+            new { },
+            new { LabelId = label.Id, LabelName = label.Name, IsApplied = isApplied });
+
+        await _db.SaveChangesAsync();
     }
 }

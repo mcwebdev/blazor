@@ -1,0 +1,63 @@
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Web.Utilities
+
+<div class="task-card" draggable="true"
+     @ondragstart="HandleDragStart"
+     @onclick="HandleClick">
+    <div class="task-card-meta">
+        <span class="priority @Task.Priority.ToString().ToLower()">@Task.Priority</span>
+        @if (!string.IsNullOrEmpty(Task.AssigneeName))
+        {
+            <span class="user-avatar compact" title="@Task.AssigneeName">
+                @FormatHelper.GetInitials(Task.AssigneeName)
+            </span>
+        }
+    </div>
+    @if (Task.Labels != null && Task.Labels.Any())
+    {
+        <div class="task-labels">
+            @foreach (var label in Task.Labels)
+            {
+                <span class="task-label" style="background-color: @label.Color;">@label.Name</span>
+            }
+        </div>
+    }
+    <h4>@Task.Title</h4>
+    <div class="task-card-footer">
+        @if (Task.DueDateUtc is not null)
+        {
+            <span class="task-due @(Task.DueDateUtc.Value < DateTime.UtcNow && Task.Status != FlowBoard.Domain.Enums.TaskItemStatus.Done ? "overdue" : "")">
+                Due @FormatHelper.FormatTaskDate(Task.DueDateUtc.Value)
+            </span>
+        }
+        else
+        {
+            <span>@(Task.CommentCount > 0 ? $"Comments {Task.CommentCount}" : "")</span>
+        }
+        @if (Task.ChecklistTotalCount > 0)
+        {
+            <span>Checklist @Task.ChecklistCompleteCount/@Task.ChecklistTotalCount</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public TaskCardDto Task { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<TaskCardDto> OnDragStart { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnClick { get; set; }
+
+    private Task HandleDragStart()
+    {
+        return OnDragStart.InvokeAsync(Task);
+    }
+
+    private Task HandleClick()
+    {
+        return OnClick.InvokeAsync(Task.Id);
+    }
+}

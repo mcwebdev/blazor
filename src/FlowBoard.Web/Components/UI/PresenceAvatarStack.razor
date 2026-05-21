@@ -1,0 +1,35 @@
+@using FlowBoard.Application.DTOs
+
+<div class="presence-stack" title="Users currently viewing this board">
+    @foreach (var user in Users.Take(MaxVisible))
+    {
+        <div class="presence-avatar" title="@user.Name">
+            @GetInitials(user.Name)
+        </div>
+    }
+    @if (Users.Count > MaxVisible)
+    {
+        <div class="presence-avatar overflow" title="@(Users.Count - MaxVisible) more users">
+            +@(Users.Count - MaxVisible)
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<BoardPresenceDto> Users { get; set; } = [];
+
+    [Parameter]
+    public int MaxVisible { get; set; } = 4;
+
+    private static string GetInitials(string value)
+    {
+        var parts = value
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .Select(part => part[0].ToString().ToUpperInvariant())
+            .ToArray();
+
+        return parts.Length == 0 ? "?" : string.Concat(parts);
+    }
+}

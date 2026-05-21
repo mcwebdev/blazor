@@ -1,7 +1,9 @@
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Domain.Enums
+@using Microsoft.AspNetCore.SignalR.Client
 @inject IBoardService BoardService
+@inject ICurrentUserService CurrentUserService
 
 <div class="task-drawer-backdrop @(IsOpen ? "open" : "")" @onclick="Close"></div>
 <div class="task-drawer @(IsOpen ? "open" : "")">
@@ -19,12 +21,24 @@
 
             <div class="form-group">
                 <label for="task-title-input">Title</label>
-                <input id="task-title-input" name="task-title" type="text" class="form-control" @bind="Task.Title" />
+                <input id="task-title-input" name="task-title" type="text" class="form-control" @bind="Task.Title" @onfocus="@(() => HandleFocusAsync("Title"))" @onblur="@(() => HandleBlurAsync("Title"))" />
+                @if (ActiveEditors.TryGetValue("Title", out var titleEditors) && titleEditors.Any())
+                {
+                    <div class="field-editing-indicator" style="font-size: 0.8rem; color: #6c757d; margin-top: 4px;">
+                        <i class="bi bi-pencil-fill"></i> @string.Join(", ", titleEditors) @(titleEditors.Count == 1 ? "is" : "are") editing
+                    </div>
+                }
             </div>
 
             <div class="form-group">
                 <label for="task-description-input">Description</label>
-                <textarea id="task-description-input" name="task-description" class="form-control" rows="4" @bind="Task.Description"></textarea>
+                <textarea id="task-description-input" name="task-description" class="form-control" rows="4" @bind="Task.Description" @onfocus="@(() => HandleFocusAsync("Description"))" @onblur="@(() => HandleBlurAsync("Description"))"></textarea>
+                @if (ActiveEditors.TryGetValue("Description", out var descEditors) && descEditors.Any())
+                {
+                    <div class="field-editing-indicator" style="font-size: 0.8rem; color: #6c757d; margin-top: 4px;">
+                        <i class="bi bi-pencil-fill"></i> @string.Join(", ", descEditors) @(descEditors.Count == 1 ? "is" : "are") editing
+                    </div>
+                }
             </div>
 
             <div class="form-row">
@@ -66,6 +80,66 @@
                     <input id="task-due-date-input" name="task-due-date" type="date" class="form-control" @bind="Task.DueDateUtc" @bind:format="yyyy-MM-dd" />
                 </div>
             </div>
+
+            @if (!IsCreateMode)
+            {
+                <div class="form-group task-labels-select" style="margin-top: 16px;">
+                    <label>Labels</label>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+                        @foreach (var label in AvailableLabels)
+                        {
+                            var isApplied = Task.Labels.Any(l => l.Id == label.Id);
+                            <button type="button" 
+                                    class="btn btn-sm @(isApplied ? "" : "btn-outline-secondary")" 
+                                    style="@(isApplied ? $"background-color: {label.Color}; color: #fff; border-color: {label.Color};" : "")"
+                                    @onclick="() => ToggleLabelAsync(label, !isApplied)">
+                                @label.Name
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <hr />
+                <div class="task-checklists">
+                    <h4>Checklist</h4>
+                    <div class="checklist-items">
+                        @foreach (var item in Task.Checklists.OrderBy(c => c.SortOrder))
+                        {
+                            <div class="checklist-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <input type="checkbox" id="chk-@item.Id" checked="@item.IsComplete" @onchange="@(e => ToggleChecklistAsync(item.Id, (bool)(e.Value ?? false)))" />
+                                <label for="chk-@item.Id" style="@(item.IsComplete ? "text-decoration: line-through; color: #666; margin: 0;" : "margin: 0;")">@item.Text</label>
+                            </div>
+                        }
+                    </div>
+                    <div class="add-checklist-item" style="display: flex; gap: 8px; margin-top: 8px;">
+                        <input type="text" class="form-control" placeholder="Add an item..." @bind="NewChecklistText" @bind:event="oninput" @onkeyup="HandleChecklistKeyPress" style="flex: 1;" />
+                        <button type="button" class="btn btn-sm btn-secondary" @onclick="AddChecklistAsync" disabled="@string.IsNullOrWhiteSpace(NewChecklistText)">Add</button>
+                    </div>
+                </div>
+
+                <hr />
+                <div class="task-comments">
+                    <h4>Comments</h4>
+                    <div class="comments-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px;">
+                        @foreach (var comment in Task.Comments.OrderBy(c => c.CreatedAtUtc))
+                        {
+                            <div class="comment-bubble" style="background: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #e9ecef;">
+                                <div class="comment-header" style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #6c757d; margin-bottom: 4px;">
+                                    <span class="comment-author" style="font-weight: 600; color: #495057;">@comment.AuthorName</span>
+                                    <span class="comment-time">@comment.CreatedAtUtc.ToString("g")</span>
+                                </div>
+                                <div class="comment-body" style="white-space: pre-wrap; margin: 0;">@comment.Body</div>
+                            </div>
+                        }
+                    </div>
+                    <div class="add-comment" style="display: flex; flex-direction: column; gap: 8px;">
+                        <textarea class="form-control" rows="2" placeholder="Write a comment..." @bind="NewCommentText" @bind:event="oninput"></textarea>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="AddCommentAsync" disabled="@string.IsNullOrWhiteSpace(NewCommentText)">Comment</button>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
         <div class="drawer-footer">
             <button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
@@ -82,9 +156,32 @@
     }
 </div>
 
+@* Conflict Resolution Modal *@
+@if (ShowConflictModal)
+{
+    <div class="conflict-modal-backdrop">
+        <div class="conflict-modal">
+            <div class="conflict-modal-icon">⚠️</div>
+            <h3>Edit Conflict Detected</h3>
+            <p>Another user has saved changes to this task since you opened it. Your version is now stale.</p>
+            <div class="conflict-modal-actions">
+                <button type="button" class="btn btn-danger" @onclick="HandleConflictOverwrite">
+                    <i class="bi bi-arrow-repeat"></i> Overwrite with My Changes
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="HandleConflictDiscard">
+                    Discard My Changes
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter]
     public EventCallback<TaskDrawerSavedArgs> OnTaskSaved { get; set; }
+
+    [Parameter]
+    public HubConnection? HubConnection { get; set; }
 
     public bool IsOpen { get; private set; }
     public TaskDetailDto? Task { get; private set; }
@@ -93,6 +190,13 @@
     private bool IsLoading;
     private bool IsSaving;
     private string? ValidationMessage;
+    
+    private IReadOnlyList<TaskLabelDto> AvailableLabels = [];
+    private string NewChecklistText = "";
+    private string NewCommentText = "";
+
+    private Dictionary<string, List<string>> ActiveEditors = new();
+    private bool _isSubscribedToHub;
 
     private static readonly TaskItemStatus[] AvailableStatuses =
     [
@@ -110,12 +214,22 @@
         ValidationMessage = null;
         Task = null;
         BoardMembers = [];
+        NewChecklistText = "";
+        NewCommentText = "";
+        ActiveEditors = new();
         StateHasChanged();
 
         Task = await BoardService.GetTaskAsync(taskId);
         BoardMembers = Task is null
             ? []
             : await BoardService.GetBoardMembersAsync(Task.BoardId);
+        
+        AvailableLabels = Task is null
+            ? []
+            : await BoardService.GetLabelsForBoardAsync(Task.BoardId);
+
+        SubscribeToEditingEvents();
+
         IsLoading = false;
         StateHasChanged();
     }
@@ -131,6 +245,8 @@
         StateHasChanged();
 
         BoardMembers = await BoardService.GetBoardMembersAsync(boardId);
+        AvailableLabels = await BoardService.GetLabelsForBoardAsync(boardId);
+        
         Task = new TaskDetailDto
         {
             BoardId = boardId,
@@ -143,15 +259,32 @@
         StateHasChanged();
     }
 
-    public void Close()
+    public async Task CloseAsync()
     {
+        // Notify hub we stopped editing any field
+        if (HubConnection is not null && Task is not null && _currentlyFocusedField is not null)
+        {
+            await HubConnection.SendAsync("StopEditing", Task.BoardId, Task.Id, _currentlyFocusedField);
+            _currentlyFocusedField = null;
+        }
+
         IsOpen = false;
         Task = null;
         IsCreateMode = false;
         IsSaving = false;
+        ShowConflictModal = false;
         ValidationMessage = null;
+        ActiveEditors = new();
         StateHasChanged();
     }
+
+    private void Close()
+    {
+        _ = CloseAsync();
+    }
+
+    private bool ShowConflictModal;
+    private string? _currentlyFocusedField;
 
     private async Task SaveAsync()
     {
@@ -196,6 +329,11 @@
 
             Close();
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            ShowConflictModal = true;
+            IsSaving = false;
+        }
         catch (InvalidOperationException ex)
         {
             ValidationMessage = ex.Message;
@@ -208,6 +346,93 @@
         }
     }
 
+    private async Task HandleConflictOverwrite()
+    {
+        if (Task is null) return;
+
+        ShowConflictModal = false;
+        IsSaving = true;
+        ValidationMessage = null;
+
+        try
+        {
+            await BoardService.ForceUpdateTaskAsync(Task);
+            await OnTaskSaved.InvokeAsync(new TaskDrawerSavedArgs(
+                "TaskUpdated",
+                $"Updated {Task.Title.Trim()} (overwritten)."));
+            Close();
+        }
+        catch (Exception ex)
+        {
+            ValidationMessage = $"Overwrite failed: {ex.Message}";
+            IsSaving = false;
+        }
+    }
+
+    private void HandleConflictDiscard()
+    {
+        ShowConflictModal = false;
+        Close();
+    }
+
+    private void SubscribeToEditingEvents()
+    {
+        if (_isSubscribedToHub || HubConnection is null)
+            return;
+
+        _isSubscribedToHub = true;
+
+        HubConnection.On<string, Guid, string>("UserStartedEditing", async (userName, taskId, fieldName) =>
+        {
+            if (Task is null || Task.Id != taskId) return;
+
+            await InvokeAsync(() =>
+            {
+                if (!ActiveEditors.ContainsKey(fieldName))
+                    ActiveEditors[fieldName] = new();
+
+                if (!ActiveEditors[fieldName].Contains(userName))
+                    ActiveEditors[fieldName].Add(userName);
+
+                StateHasChanged();
+            });
+        });
+
+        HubConnection.On<string, Guid, string>("UserStoppedEditing", async (userName, taskId, fieldName) =>
+        {
+            if (Task is null || Task.Id != taskId) return;
+
+            await InvokeAsync(() =>
+            {
+                if (ActiveEditors.TryGetValue(fieldName, out var editors))
+                {
+                    editors.Remove(userName);
+                    if (editors.Count == 0)
+                        ActiveEditors.Remove(fieldName);
+                }
+                StateHasChanged();
+            });
+        });
+    }
+
+    private async Task HandleFocusAsync(string fieldName)
+    {
+        _currentlyFocusedField = fieldName;
+        if (HubConnection is not null && Task is not null)
+        {
+            await HubConnection.SendAsync("StartEditing", Task.BoardId, Task.Id, fieldName);
+        }
+    }
+
+    private async Task HandleBlurAsync(string fieldName)
+    {
+        _currentlyFocusedField = null;
+        if (HubConnection is not null && Task is not null)
+        {
+            await HubConnection.SendAsync("StopEditing", Task.BoardId, Task.Id, fieldName);
+        }
+    }
+
     private static string FormatStatus(TaskItemStatus status)
     {
         return status switch
@@ -216,5 +441,66 @@
             TaskItemStatus.InReview => "In review",
             _ => status.ToString()
         };
+    }
+
+    private async Task ToggleChecklistAsync(Guid itemId, bool isComplete)
+    {
+        if (CurrentUserService.UserId is null) return;
+        await BoardService.ToggleChecklistItemAsync(itemId, isComplete, CurrentUserService.UserId);
+        var item = Task?.Checklists.FirstOrDefault(c => c.Id == itemId);
+        if (item is not null)
+        {
+            var updatedItem = item with { IsComplete = isComplete };
+            var list = Task!.Checklists.ToList();
+            var index = list.IndexOf(item);
+            list[index] = updatedItem;
+            Task.Checklists = list;
+        }
+    }
+
+    private async Task AddChecklistAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewChecklistText) || Task is null || CurrentUserService.UserId is null) return;
+        var newItem = await BoardService.AddChecklistItemAsync(Task.Id, NewChecklistText, CurrentUserService.UserId);
+        var list = Task.Checklists.ToList();
+        list.Add(newItem);
+        Task.Checklists = list;
+        NewChecklistText = "";
+    }
+
+    private async Task HandleChecklistKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddChecklistAsync();
+        }
+    }
+
+    private async Task AddCommentAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewCommentText) || Task is null || CurrentUserService.UserId is null) return;
+        var newComment = await BoardService.AddCommentAsync(Task.Id, NewCommentText, CurrentUserService.UserId);
+        var list = Task.Comments.ToList();
+        list.Add(newComment);
+        Task.Comments = list;
+        NewCommentText = "";
+    }
+
+    private async Task ToggleLabelAsync(TaskLabelDto label, bool isApplied)
+    {
+        if (CurrentUserService.UserId is null || Task is null) return;
+        await BoardService.ToggleTaskLabelAsync(Task.Id, label.Id, isApplied, CurrentUserService.UserId);
+        
+        var list = Task.Labels.ToList();
+        if (isApplied)
+        {
+            if (!list.Any(l => l.Id == label.Id)) list.Add(label);
+        }
+        else
+        {
+            var existing = list.FirstOrDefault(l => l.Id == label.Id);
+            if (existing != null) list.Remove(existing);
+        }
+        Task.Labels = list;
     }
 }
