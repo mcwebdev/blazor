@@ -192,23 +192,39 @@ public class AnalyticsService : IAnalyticsService
 
     public async Task<WorkspaceAnalyticsSummaryDto> GetWorkspaceSummaryAsync(Guid workspaceId, CancellationToken ct = default)
     {
-        var boards = await _db.Boards
+        var boardsRaw = await _db.Boards
             .AsNoTracking()
             .Where(b => b.WorkspaceId == workspaceId)
             .Select(b => new
             {
                 b.Id,
                 b.Name,
-                ColumnCount = b.Columns.Count,
-                Tasks = b.Tasks.Select(t => new
-                {
-                    t.Status,
-                    t.DueDateUtc,
-                    t.CompletedAtUtc,
-                    t.AssigneeUserId
-                }).ToList()
+                ColumnCount = b.Columns.Count
             })
             .ToListAsync(ct);
+
+        var boardIds = boardsRaw.Select(b => b.Id).ToList();
+
+        var tasksRaw = await _db.TaskItems
+            .AsNoTracking()
+            .Where(t => boardIds.Contains(t.BoardId))
+            .Select(t => new
+            {
+                t.BoardId,
+                t.Status,
+                t.DueDateUtc,
+                t.CompletedAtUtc,
+                t.AssigneeUserId
+            })
+            .ToListAsync(ct);
+
+        var boards = boardsRaw.Select(b => new
+        {
+            b.Id,
+            b.Name,
+            b.ColumnCount,
+            Tasks = tasksRaw.Where(t => t.BoardId == b.Id)
+        }).ToList();
 
         var now = DateTime.UtcNow;
         var weekAgo = now - WeekWindow;
@@ -222,7 +238,7 @@ public class AnalyticsService : IAnalyticsService
 
         foreach (var b in boards)
         {
-            var bTaskCount = b.Tasks.Count;
+            var bTaskCount = b.Tasks.Count();
             var bOverdue = 0;
             var bCompleted = 0;
             var bCompletedAllTime = 0;

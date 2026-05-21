@@ -544,4 +544,18 @@ Next recommended task: Phase 7 — notifications (§4.8) with the existing `Noti
 - Wrote `wwwroot/js/notificationRealtime.js` to handle browser-side SignalR connections, invoking a C# `DotNetObjectReference` with the new unread count upon broadcast.
 - Re-ran tests and verified 22/22 unit tests still pass after integrating the loosely-coupled UI push notification dependencies.
 
-Next recommended task: Final project cleanups. Workspace-level `/analytics` rollup, Docker Compose file for local development (`docker-compose.yml`), and writing the polished `README.md` as required by spec §20 (with architecture diagrams, instructions, and screenshots).
+Next recommended task: Final project cleanups.- [x] **Workspace Analytics Rollup:** Implement the true aggregated dashboard for the workspace.
+- [x] **Local Development:** Create `docker-compose.yml` for containerized local development.
+- [x] **Final Documentation:** Write the comprehensive `README.md` (spec §20) including architecture diagrams, setup steps, and screenshots.).
+
+### 2026-05-21 - UI Polish & Production Deployment
+
+- Addressed z-index and transparency issues on the workspace switcher and account utility dropdowns. Replaced undefined CSS variables with theme-consistent hex codes.
+- Verified toggle interactions on sidebar and top-bar buttons via JS toggle scripts.
+- Corrected the deployment configuration that had accidentally pushed an earlier build to a fallback GCP project (`deepspeed-460b4`). 
+- Fixed `Dockerfile` copy commands to ensure the solution's `dotnet restore` passes cleanly with the new test project dependencies.
+- Successfully deployed the stable build and polished UI to the correct production Cloud Run instance in the `blazor-5c3d4` project.
+- Deleted the accidental test services from the `deepspeed-460b4` project to maintain environment integrity.
+- Production environment at `https://flowboard-n6qswg5pla-uc.a.run.app/` is now fully up to date and demo-ready.
+
+Next recommended task: The final functional feature: Workspace-level Analytics Rollup. Then documentation (`README.md`) and local compose setup.

@@ -68,18 +68,22 @@ public class DashboardService : IDashboardService
             .Where(u => userIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.DisplayName);
 
-        var recentActivity = await _db.ActivityLogs
+        var recentActivityLogs = await _db.ActivityLogs
             .Where(a => a.WorkspaceId == workspaceId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .Take(5)
+            .Select(a => new { a.Id, a.Summary, a.ActorUserId, a.CreatedAtUtc })
+            .AsNoTracking()
+            .ToListAsync();
+
+        var recentActivity = recentActivityLogs
             .Select(a => new ActivityEntryDto(
                 a.Id,
                 a.Summary,
-                userNameMap.ContainsKey(a.ActorUserId) ? userNameMap[a.ActorUserId] : "Unknown",
+                userNameMap.TryGetValue(a.ActorUserId, out var name) ? name : "Unknown",
                 a.CreatedAtUtc
             ))
-            .AsNoTracking()
-            .ToListAsync();
+            .ToList();
 
         return new DashboardSummaryDto(
             assignedToMe,

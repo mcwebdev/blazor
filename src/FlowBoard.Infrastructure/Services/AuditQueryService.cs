@@ -125,23 +125,30 @@ public class AuditQueryService : IAuditQueryService
         Guid workspaceId,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _db.WorkspaceMembers
+        var rawRows = await _db.WorkspaceMembers
             .AsNoTracking()
             .Where(m => m.WorkspaceId == workspaceId)
             .Join(_db.Users.AsNoTracking(),
                 m => m.UserId,
                 u => u.Id,
-                (m, u) => new WorkspaceMemberRowDto(
+                (m, u) => new 
+                {
                     u.Id,
                     u.DisplayName,
-                    u.Email ?? string.Empty,
+                    u.Email,
                     m.Role,
-                    m.JoinedAtUtc))
+                    m.JoinedAtUtc
+                })
             .OrderByDescending(r => r.Role)
             .ThenBy(r => r.DisplayName)
             .ToListAsync(cancellationToken);
 
-        return rows;
+        return rawRows.Select(r => new WorkspaceMemberRowDto(
+            r.Id,
+            r.DisplayName,
+            r.Email ?? string.Empty,
+            r.Role,
+            r.JoinedAtUtc)).ToList();
     }
 
     public async Task<IReadOnlyList<WipBreachRowDto>> GetWipBreachesAsync(
@@ -150,7 +157,7 @@ public class AuditQueryService : IAuditQueryService
     {
         // Project columns with a WipLimit AND a current count that meets or
         // exceeds the limit. Done in a single SQL roundtrip via a join.
-        var rows = await _db.BoardColumns
+        var rawRows = await _db.BoardColumns
             .AsNoTracking()
             .Where(c => c.WipLimit != null)
             .Join(_db.Boards.AsNoTracking().Where(b => b.WorkspaceId == workspaceId),
@@ -159,7 +166,7 @@ public class AuditQueryService : IAuditQueryService
                 (c, b) => new { Column = c, Board = b })
             .Select(x => new
             {
-                x.Board.Id,
+                BoardId = x.Board.Id,
                 BoardName = x.Board.Name,
                 ColumnId = x.Column.Id,
                 ColumnName = x.Column.Name,
@@ -168,16 +175,15 @@ public class AuditQueryService : IAuditQueryService
             })
             .Where(x => x.CurrentCount >= x.WipLimit)
             .OrderByDescending(x => x.CurrentCount - x.WipLimit)
-            .Select(x => new WipBreachRowDto(
-                x.Id,
-                x.BoardName,
-                x.ColumnId,
-                x.ColumnName,
-                x.WipLimit,
-                x.CurrentCount))
             .ToListAsync(cancellationToken);
 
-        return rows;
+        return rawRows.Select(x => new WipBreachRowDto(
+            x.BoardId,
+            x.BoardName,
+            x.ColumnId,
+            x.ColumnName,
+            x.WipLimit,
+            x.CurrentCount)).ToList();
     }
 
     public async Task<IReadOnlyList<FailedCommandRowDto>> GetFailedCommandsAsync(
@@ -185,24 +191,33 @@ public class AuditQueryService : IAuditQueryService
         int take = 200,
         CancellationToken cancellationToken = default)
     {
-        var rows = await _db.FailedCommands
+        var rawRows = await _db.FailedCommands
             .AsNoTracking()
             .Where(f => f.WorkspaceId == workspaceId)
             .OrderByDescending(f => f.CreatedAtUtc)
             .Take(take)
-            .Select(f => new FailedCommandRowDto(
+            .Select(f => new 
+            {
                 f.Id,
                 f.CreatedAtUtc,
                 f.UserId,
                 f.CommandType,
                 f.ErrorSummary,
                 f.CorrelationId,
-                f.PayloadJson.Length > PayloadPreviewLength
-                    ? f.PayloadJson.Substring(0, PayloadPreviewLength) + "…"
-                    : f.PayloadJson))
+                f.PayloadJson
+            })
             .ToListAsync(cancellationToken);
 
-        return rows;
+        return rawRows.Select(f => new FailedCommandRowDto(
+            f.Id,
+            f.CreatedAtUtc,
+            f.UserId,
+            f.CommandType,
+            f.ErrorSummary,
+            f.CorrelationId,
+            f.PayloadJson.Length > PayloadPreviewLength
+                ? f.PayloadJson.Substring(0, PayloadPreviewLength) + "…"
+                : f.PayloadJson)).ToList();
     }
 
     public async Task RecordFailedCommandAsync(
