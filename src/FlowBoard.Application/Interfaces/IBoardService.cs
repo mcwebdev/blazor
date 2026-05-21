@@ -8,6 +8,8 @@ public interface IBoardService
     Task<IReadOnlyList<BoardDto>> GetBoardsForWorkspaceAsync(Guid workspaceId);
     Task<IReadOnlyList<ActivityEntryDto>> GetRecentActivityForBoardAsync(Guid boardId, int take = 12);
     Task<IReadOnlyList<BoardMemberDto>> GetBoardMembersAsync(Guid boardId);
+    Task<bool> UserCanAccessBoardAsync(Guid boardId, string userId);
+    Task<bool> TaskBelongsToBoardAsync(Guid boardId, Guid taskId);
     Task<TaskDetailDto?> GetTaskAsync(Guid taskId);
     Task<TaskDetailDto> CreateTaskAsync(CreateTaskDto dto);
     Task UpdateTaskAsync(TaskDetailDto dto);

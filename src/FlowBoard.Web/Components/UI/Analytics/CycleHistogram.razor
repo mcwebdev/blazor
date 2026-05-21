@@ -1,0 +1,32 @@
+@namespace FlowBoard.Web.Components.UI.Analytics
+@using FlowBoard.Application.DTOs
+
+<div class="cycle-histogram">
+    @if (Buckets.Count == 0 || Buckets.Sum(b => b.Count) == 0)
+    {
+        <p class="cycle-empty">No completed tasks in this sample yet.</p>
+    }
+    else
+    {
+        <ol>
+            @foreach (var bucket in Buckets)
+            {
+                var ratio = MaxCount == 0 ? 0 : (double)bucket.Count / MaxCount * 100;
+                <li>
+                    <span class="bucket-label">@bucket.Label</span>
+                    <span class="bucket-track">
+                        <span class="bucket-fill"
+                              style="width: @(ratio.ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%;"></span>
+                    </span>
+                    <span class="bucket-count">@bucket.Count</span>
+                </li>
+            }
+        </ol>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<CycleTimeBucketDto> Buckets { get; set; } = [];
+
+    private int MaxCount => Buckets.Count == 0 ? 0 : Buckets.Max(b => b.Count);
+}

@@ -1,0 +1,38 @@
+.primary-action {
+    align-items: center;
+    background: #276ef1;
+    border: 0;
+    border-radius: 8px;
+    color: #ffffff;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-weight: 800;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 1rem;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    white-space: nowrap;
+}
+
+.primary-action:hover {
+    background: #1f5fd6;
+    box-shadow: 0 10px 22px rgba(39, 110, 241, 0.24);
+}
+
+.primary-action:focus-visible {
+    outline: 3px solid rgba(39, 110, 241, 0.25);
+    outline-offset: 2px;
+}
+
+.primary-action:active {
+    transform: translateY(1px);
+}
+
+.primary-action:disabled {
+    background: #d8e0e6;
+    box-shadow: none;
+    color: #6b7780;
+    cursor: not-allowed;
+    transform: none;
+}

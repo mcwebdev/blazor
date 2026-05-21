@@ -14,20 +14,26 @@ public static class SeedData
     public static readonly Guid WorkspaceId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     public static readonly Guid BoardId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
-    public static async Task InitializeAsync(IServiceProvider services)
+    public static async Task InitializeAsync(
+        IServiceProvider services,
+        bool applySchemaChanges = true,
+        bool seedDemoData = true)
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FlowBoardDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-        if (db.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        if (applySchemaChanges && db.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
         {
             await db.Database.EnsureCreatedAsync();
         }
-        else
+        else if (applySchemaChanges)
         {
             await db.Database.MigrateAsync();
         }
+
+        if (!seedDemoData)
+            return;
 
         // Skip seeding if data already exists.
         if (await db.Workspaces.AnyAsync())
@@ -135,7 +141,7 @@ public static class SeedData
                 DueDateUtc = now.AddDays(5),
                 SortOrder = 0,
                 CreatedAtUtc = now.AddHours(-8),
-                RowVersion = Guid.NewGuid().ToByteArray()
+                Version = Guid.NewGuid()
             },
             new TaskItem
             {
@@ -151,7 +157,7 @@ public static class SeedData
                 DueDateUtc = now.AddDays(2),
                 SortOrder = 1,
                 CreatedAtUtc = now.AddHours(-6),
-                RowVersion = Guid.NewGuid().ToByteArray()
+                Version = Guid.NewGuid()
             },
             new TaskItem
             {
@@ -167,7 +173,7 @@ public static class SeedData
                 DueDateUtc = now.AddDays(3),
                 SortOrder = 0,
                 CreatedAtUtc = now.AddHours(-12),
-                RowVersion = Guid.NewGuid().ToByteArray()
+                Version = Guid.NewGuid()
             },
             new TaskItem
             {
@@ -183,7 +189,7 @@ public static class SeedData
                 DueDateUtc = now.AddDays(1),
                 SortOrder = 1,
                 CreatedAtUtc = now.AddHours(-4),
-                RowVersion = Guid.NewGuid().ToByteArray()
+                Version = Guid.NewGuid()
             },
             new TaskItem
             {
@@ -199,7 +205,7 @@ public static class SeedData
                 DueDateUtc = now.AddDays(-1), // overdue
                 SortOrder = 0,
                 CreatedAtUtc = now.AddDays(-3),
-                RowVersion = Guid.NewGuid().ToByteArray()
+                Version = Guid.NewGuid()
             },
             new TaskItem
             {
@@ -215,7 +221,7 @@ public static class SeedData
                 CompletedAtUtc = now.AddHours(-2),
                 SortOrder = 0,
                 CreatedAtUtc = now.AddDays(-5),
-                RowVersion = Guid.NewGuid().ToByteArray()
+                Version = Guid.NewGuid()
             }
         );
 

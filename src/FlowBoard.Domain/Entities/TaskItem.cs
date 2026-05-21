@@ -20,8 +20,9 @@ public class TaskItem : AuditableEntity
 
     /// <summary>
     /// Optimistic concurrency token for conflict detection.
+    /// Mapped to the existing RowVersion database column.
     /// </summary>
-    public byte[] RowVersion { get; set; } = [];
+    public Guid Version { get; set; } = Guid.NewGuid();
 
     // Navigation properties
     public Board Board { get; set; } = null!;

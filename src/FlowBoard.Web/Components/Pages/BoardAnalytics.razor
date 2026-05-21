@@ -1,0 +1,216 @@
+@page "/boards/{BoardId}/analytics"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@using FlowBoard.Infrastructure.Data
+@using FlowBoard.Web.Components.UI.Analytics
+@inject IAnalyticsService AnalyticsService
+
+<PageTitle>@(Analytics?.BoardName ?? "Analytics") · Analytics</PageTitle>
+
+@if (Analytics is null)
+{
+    <section class="placeholder-page">
+        <p class="eyebrow">Analytics</p>
+        <h2>Board not found</h2>
+        <p>We couldn't load analytics for board <strong>@BoardId</strong>.</p>
+    </section>
+}
+else
+{
+    <section class="analytics-page">
+        <header class="analytics-header">
+            <div>
+                <p class="eyebrow">Board analytics</p>
+                <h1>@Analytics.BoardName</h1>
+                <p class="analytics-subtitle">
+                    Last refreshed @Analytics.GeneratedAtUtc.ToLocalTime().ToString("MMM d, HH:mm").
+                    @Analytics.TotalTasks tasks tracked · @Analytics.CompletedSampleSize cycle-time samples.
+                </p>
+            </div>
+            <a class="analytics-back" href="/boards/@BoardId">← Back to board</a>
+        </header>
+
+        <section class="analytics-tiles">
+            <MetricTile Label="Open tasks"
+                        Value="@Analytics.OpenTasks.ToString()"
+                        Caption="Across all open columns"
+                        Tone="info"
+                        Href="@BuildDrilldownUrl(AnalyticsMetric.OpenByStatus)" />
+
+            <MetricTile Label="Overdue"
+                        Value="@Analytics.OverdueCount.ToString()"
+                        Caption="Past due, not yet done"
+                        Tone="@(Analytics.OverdueCount > 0 ? "warning" : "default")"
+                        Href="@BuildDrilldownUrl(AnalyticsMetric.Overdue)" />
+
+            <MetricTile Label="Due this week"
+                        Value="@Analytics.DueThisWeek.ToString()"
+                        Caption="Next 7 days"
+                        Href="@BuildDrilldownUrl(AnalyticsMetric.DueThisWeek)" />
+
+            <MetricTile Label="Completed · 7d"
+                        Value="@Analytics.CompletedLast7Days.ToString()"
+                        Caption="@($"{Analytics.CompletedAllTime} all-time")"
+                        Tone="success"
+                        Href="@BuildDrilldownUrl(AnalyticsMetric.CompletedThisWeek)" />
+
+            <MetricTile Label="Lead time"
+                        Value="@FormatDays(Analytics.AverageLeadTimeDays)"
+                        Caption="Created → completed average"
+                        Href="@BuildDrilldownUrl(AnalyticsMetric.LeadTimeSample)" />
+
+            <MetricTile Label="Cycle time"
+                        Value="@FormatDays(Analytics.AverageCycleTimeDays)"
+                        Caption="First move → completed"
+                        Href="@BuildDrilldownUrl(AnalyticsMetric.CycleTimeSample)" />
+        </section>
+
+        <section class="analytics-grid">
+            <article class="analytics-card analytics-card-wide">
+                <header>
+                    <h2>Burndown · last 14 days</h2>
+                    <p>Outstanding tasks on the board at end of day.</p>
+                </header>
+                <BurndownChart Points="@Analytics.Burndown" />
+            </article>
+
+            <article class="analytics-card">
+                <header>
+                    <h2>Status mix</h2>
+                    <p>How open work is distributed across columns.</p>
+                </header>
+                <StackedMixBar Segments="@StatusSegments" AriaLabel="Tasks by status" />
+            </article>
+
+            <article class="analytics-card">
+                <header>
+                    <h2>Priority mix</h2>
+                    <p>Workload weighted by urgency.</p>
+                </header>
+                <StackedMixBar Segments="@PrioritySegments" AriaLabel="Tasks by priority" />
+            </article>
+
+            <article class="analytics-card analytics-card-wide">
+                <header>
+                    <h2>Workload by assignee</h2>
+                    <p>Open tasks with overdue overlay. Click a name to drill in.</p>
+                </header>
+                <WorkloadBars Rows="@Analytics.Workload" HrefFor="WorkloadHref" />
+            </article>
+
+            <article class="analytics-card">
+                <header>
+                    <h2>Cycle-time histogram</h2>
+                    <p>Distribution of first-move → completed durations.</p>
+                </header>
+                <CycleHistogram Buckets="@Analytics.CycleTimeHistogram" />
+            </article>
+
+            <article class="analytics-card">
+                <header>
+                    <h2>Lead-time histogram</h2>
+                    <p>Distribution of created → completed durations.</p>
+                </header>
+                <CycleHistogram Buckets="@Analytics.LeadTimeHistogram" />
+            </article>
+        </section>
+    </section>
+}
+
+@code {
+    [Parameter] public string BoardId { get; set; } = string.Empty;
+
+    private Guid ResolvedBoardId =>
+        BoardId.Equals("demo", StringComparison.OrdinalIgnoreCase)
+            ? SeedData.BoardId
+            : Guid.TryParse(BoardId, out var id) ? id : Guid.Empty;
+
+    private BoardAnalyticsSummaryDto? Analytics { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ResolvedBoardId == Guid.Empty)
+        {
+            Analytics = null;
+            return;
+        }
+
+        Analytics = await AnalyticsService.GetBoardAnalyticsAsync(ResolvedBoardId);
+    }
+
+    private static readonly Dictionary<TaskItemStatus, string> StatusColors = new()
+    {
+        [TaskItemStatus.Open] = "#94a3b8",
+        [TaskItemStatus.InProgress] = "#276ef1",
+        [TaskItemStatus.InReview] = "#7c3aed",
+        [TaskItemStatus.Done] = "#4fb286",
+        [TaskItemStatus.Archived] = "#cbd5e1"
+    };
+
+    private static readonly Dictionary<TaskPriority, string> PriorityColors = new()
+    {
+        [TaskPriority.Critical] = "#dc2626",
+        [TaskPriority.High] = "#d97706",
+        [TaskPriority.Medium] = "#276ef1",
+        [TaskPriority.Low] = "#64748b"
+    };
+
+    private IReadOnlyList<StackedMixBar.Segment> StatusSegments => Analytics is null
+        ? []
+        : Analytics.StatusMix
+            .Select(s => new StackedMixBar.Segment(
+                FormatStatus(s.Status),
+                s.Count,
+                StatusColors.TryGetValue(s.Status, out var c) ? c : "#94a3b8",
+                BuildDrilldownUrl(AnalyticsMetric.OpenByStatus, status: s.Status)))
+            .ToList();
+
+    private IReadOnlyList<StackedMixBar.Segment> PrioritySegments => Analytics is null
+        ? []
+        : Analytics.PriorityMix
+            .Select(p => new StackedMixBar.Segment(
+                p.Priority.ToString(),
+                p.Count,
+                PriorityColors.TryGetValue(p.Priority, out var c) ? c : "#94a3b8",
+                BuildDrilldownUrl(AnalyticsMetric.OpenByPriority, priority: p.Priority)))
+            .ToList();
+
+    private string? WorkloadHref(WorkloadRowDto row) =>
+        BuildDrilldownUrl(AnalyticsMetric.OpenByAssignee, assignee: row.AssigneeUserId ?? "__none__");
+
+    private string BuildDrilldownUrl(
+        AnalyticsMetric metric,
+        string? assignee = null,
+        TaskPriority? priority = null,
+        TaskItemStatus? status = null)
+    {
+        var qs = new List<string>
+        {
+            $"metric={Uri.EscapeDataString(metric.ToString())}"
+        };
+        if (!string.IsNullOrEmpty(assignee))
+            qs.Add($"assignee={Uri.EscapeDataString(assignee)}");
+        if (priority.HasValue)
+            qs.Add($"priority={Uri.EscapeDataString(priority.Value.ToString())}");
+        if (status.HasValue)
+            qs.Add($"status={Uri.EscapeDataString(status.Value.ToString())}");
+        return $"/boards/{BoardId}/analytics/tasks?{string.Join('&', qs)}";
+    }
+
+    private static string FormatDays(double days)
+    {
+        if (days <= 0) return "—";
+        if (days < 1) return $"{days * 24:F1}h";
+        if (days < 14) return $"{days:F1}d";
+        return $"{days / 7:F1}w";
+    }
+
+    private static string FormatStatus(TaskItemStatus status) => status switch
+    {
+        TaskItemStatus.InProgress => "In Progress",
+        TaskItemStatus.InReview => "In Review",
+        _ => status.ToString()
+    };
+}

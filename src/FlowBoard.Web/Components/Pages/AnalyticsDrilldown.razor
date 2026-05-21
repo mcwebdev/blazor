@@ -1,0 +1,271 @@
+@page "/boards/{BoardId}/analytics/tasks"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@using FlowBoard.Infrastructure.Data
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Globalization
+@using System.Text
+@inject IAnalyticsService AnalyticsService
+@inject NavigationManager Nav
+
+<PageTitle>@(Drilldown?.Title ?? "Analytics drill-down") · FlowBoard</PageTitle>
+
+@if (Drilldown is null)
+{
+    <section class="placeholder-page">
+        <p class="eyebrow">Drill-down</p>
+        <h2>Board not found</h2>
+        <p>We couldn't load drill-down data for board <strong>@BoardId</strong>.</p>
+    </section>
+}
+else
+{
+    <section class="drilldown-page">
+        <header class="drilldown-header">
+            <div>
+                <p class="eyebrow">Drill-down · @Drilldown.BoardName</p>
+                <h1>@Drilldown.Title</h1>
+                <p class="drilldown-summary">@Drilldown.Tasks.Count tasks match this filter.</p>
+            </div>
+            <div class="drilldown-actions">
+                <a class="secondary-action" href="/boards/@BoardId/analytics">← Back to analytics</a>
+                <a class="primary-action"
+                   download="@CsvFileName"
+                   href="@CsvDataUrl">Export CSV</a>
+            </div>
+        </header>
+
+        <section class="drilldown-chips">
+            @foreach (var chip in FilterChips)
+            {
+                <span class="chip">@chip</span>
+            }
+            @if (FilterChips.Count == 0)
+            {
+                <span class="chip chip-muted">No additional filters</span>
+            }
+        </section>
+
+        @if (Drilldown.Tasks.Count == 0)
+        {
+            <p class="drilldown-empty">No tasks match this filter.</p>
+        }
+        else
+        {
+            <div class="drilldown-table-wrapper" role="region" aria-label="Drill-down task list">
+                <table class="drilldown-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Title</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Priority</th>
+                            <th scope="col">Assignee</th>
+                            <th scope="col">Due</th>
+                            <th scope="col">Created</th>
+                            <th scope="col">Completed</th>
+                            <th scope="col">Lead</th>
+                            <th scope="col">Cycle</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Drilldown.Tasks)
+                        {
+                            <tr>
+                                <td class="title-cell">@row.Title</td>
+                                <td><span class="status-pill status-@row.Status.ToString().ToLowerInvariant()">@FormatStatus(row.Status)</span></td>
+                                <td><span class="priority-pill priority-@row.Priority.ToString().ToLowerInvariant()">@row.Priority</span></td>
+                                <td>@(row.AssigneeName ?? "Unassigned")</td>
+                                <td>@FormatNullableDate(row.DueDateUtc)</td>
+                                <td>@FormatDate(row.CreatedAtUtc)</td>
+                                <td>@FormatNullableDate(row.CompletedAtUtc)</td>
+                                <td>@FormatNullableDays(row.LeadTimeDays)</td>
+                                <td>@FormatNullableDays(row.CycleTimeDays)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public string BoardId { get; set; } = string.Empty;
+
+    private Guid ResolvedBoardId =>
+        BoardId.Equals("demo", StringComparison.OrdinalIgnoreCase)
+            ? SeedData.BoardId
+            : Guid.TryParse(BoardId, out var id) ? id : Guid.Empty;
+
+    private AnalyticsDrilldownDto? Drilldown { get; set; }
+    private List<string> FilterChips { get; set; } = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ResolvedBoardId == Guid.Empty)
+        {
+            Drilldown = null;
+            return;
+        }
+
+        var query = QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+
+        var metric = ParseEnum<AnalyticsMetric>(query, "metric") ?? AnalyticsMetric.Unspecified;
+        var assignees = GetValues(query, "assignee");
+        var priorities = ParseEnums<TaskPriority>(query, "priority");
+        var statuses = ParseEnums<TaskItemStatus>(query, "status");
+        var search = GetSingle(query, "search");
+        var overdue = ParseBool(query, "overdue");
+        var completed = ParseBool(query, "completed7");
+        var dueAfter = ParseDate(query, "dueAfter");
+        var dueBefore = ParseDate(query, "dueBefore");
+
+        // Treat the "__none__" sentinel as "unassigned only" — but the analytics service
+        // doesn't have a dedicated unassigned filter, so we leave it as a hint via the title chip
+        // and exclude it from the assignee filter list when it appears alone.
+        var explicitAssignees = assignees.Where(a => a != "__none__").ToList();
+        var unassignedOnly = assignees.Contains("__none__") && explicitAssignees.Count == 0;
+
+        var filter = new TaskFilterDto(
+            Search: search,
+            AssigneeUserIds: explicitAssignees.Count > 0 ? explicitAssignees : null,
+            Priorities: priorities.Count > 0 ? priorities : null,
+            Statuses: statuses.Count > 0 ? statuses : null,
+            DueBeforeUtc: dueBefore,
+            DueAfterUtc: dueAfter,
+            OverdueOnly: overdue,
+            CompletedInLast7Days: completed);
+
+        Drilldown = await AnalyticsService.GetBoardDrilldownAsync(ResolvedBoardId, metric, filter);
+
+        if (Drilldown is not null && unassignedOnly)
+        {
+            var unassignedOnlyRows = Drilldown.Tasks.Where(t => t.AssigneeUserId is null).ToList();
+            Drilldown = Drilldown with
+            {
+                Title = $"{Drilldown.Title} · Unassigned only",
+                Tasks = unassignedOnlyRows
+            };
+        }
+
+        FilterChips = BuildFilterChips(metric, explicitAssignees, priorities, statuses, unassignedOnly, search, overdue, completed, dueAfter, dueBefore);
+    }
+
+    private static List<string> BuildFilterChips(
+        AnalyticsMetric metric,
+        IReadOnlyList<string> assignees,
+        IReadOnlyList<TaskPriority> priorities,
+        IReadOnlyList<TaskItemStatus> statuses,
+        bool unassignedOnly,
+        string? search,
+        bool? overdue,
+        bool? completed,
+        DateTime? dueAfter,
+        DateTime? dueBefore)
+    {
+        var chips = new List<string>();
+        if (metric != AnalyticsMetric.Unspecified)
+            chips.Add($"Metric: {metric}");
+        if (assignees.Count > 0)
+            chips.Add($"Assignees: {assignees.Count}");
+        if (unassignedOnly)
+            chips.Add("Unassigned only");
+        foreach (var p in priorities)
+            chips.Add($"Priority: {p}");
+        foreach (var s in statuses)
+            chips.Add($"Status: {s}");
+        if (!string.IsNullOrEmpty(search))
+            chips.Add($"Search: {search}");
+        if (overdue == true)
+            chips.Add("Overdue only");
+        if (completed == true)
+            chips.Add("Completed last 7d");
+        if (dueAfter.HasValue)
+            chips.Add($"Due ≥ {dueAfter.Value:MMM d}");
+        if (dueBefore.HasValue)
+            chips.Add($"Due ≤ {dueBefore.Value:MMM d}");
+        return chips;
+    }
+
+    private static List<string> GetValues(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query, string key)
+        => query.TryGetValue(key, out var vs)
+            ? vs.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!).ToList()
+            : [];
+
+    private static string? GetSingle(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query, string key)
+        => query.TryGetValue(key, out var vs) && vs.Count > 0 ? vs[0] : null;
+
+    private static T? ParseEnum<T>(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query, string key) where T : struct, Enum
+    {
+        var raw = GetSingle(query, key);
+        return Enum.TryParse<T>(raw, ignoreCase: true, out var v) ? v : null;
+    }
+
+    private static List<T> ParseEnums<T>(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query, string key) where T : struct, Enum
+        => GetValues(query, key)
+            .Select(v => Enum.TryParse<T>(v, ignoreCase: true, out var parsed) ? (T?)parsed : null)
+            .Where(v => v.HasValue)
+            .Select(v => v!.Value)
+            .ToList();
+
+    private static bool? ParseBool(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query, string key)
+    {
+        var raw = GetSingle(query, key);
+        return bool.TryParse(raw, out var v) ? v : null;
+    }
+
+    private static DateTime? ParseDate(Dictionary<string, Microsoft.Extensions.Primitives.StringValues> query, string key)
+    {
+        var raw = GetSingle(query, key);
+        return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var v)
+            ? v
+            : null;
+    }
+
+    private static string FormatStatus(TaskItemStatus status) => status switch
+    {
+        TaskItemStatus.InProgress => "In Progress",
+        TaskItemStatus.InReview => "In Review",
+        _ => status.ToString()
+    };
+
+    private static string FormatDate(DateTime utc) => utc.ToLocalTime().ToString("yyyy-MM-dd");
+    private static string FormatNullableDate(DateTime? utc) => utc.HasValue ? utc.Value.ToLocalTime().ToString("yyyy-MM-dd") : "—";
+    private static string FormatNullableDays(double? days) => days.HasValue ? $"{days.Value:F1}d" : "—";
+
+    private string CsvFileName => $"flowboard-{Drilldown?.Metric.ToString().ToLowerInvariant() ?? "drilldown"}-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv";
+
+    private string CsvDataUrl
+    {
+        get
+        {
+            if (Drilldown is null) return "data:text/csv;charset=utf-8,";
+            var sb = new StringBuilder();
+            sb.AppendLine("Title,Status,Priority,Assignee,DueDateUtc,CreatedAtUtc,CompletedAtUtc,LeadTimeDays,CycleTimeDays");
+            foreach (var t in Drilldown.Tasks)
+            {
+                sb.Append(EscapeCsv(t.Title)).Append(',');
+                sb.Append(t.Status).Append(',');
+                sb.Append(t.Priority).Append(',');
+                sb.Append(EscapeCsv(t.AssigneeName ?? "Unassigned")).Append(',');
+                sb.Append(t.DueDateUtc?.ToString("o", CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(t.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(t.CompletedAtUtc?.ToString("o", CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(t.LeadTimeDays?.ToString("F2", CultureInfo.InvariantCulture)).Append(',');
+                sb.AppendLine(t.CycleTimeDays?.ToString("F2", CultureInfo.InvariantCulture));
+            }
+            var encoded = Uri.EscapeDataString(sb.ToString());
+            return $"data:text/csv;charset=utf-8,{encoded}";
+        }
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
+}

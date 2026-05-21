@@ -53,11 +53,24 @@ app.MapGet("/ready", () => Results.Ok(new
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-app.MapHub<BoardHub>("/hubs/board");
+app.MapHub<BoardHub>("/hubs/board")
+    .DisableAntiforgery();
 
 app.MapAdditionalIdentityEndpoints();
 
-// Initialize database and seed data (runs migrations on startup)
-await SeedData.InitializeAsync(app.Services);
+var initializeDatabaseOnStartup = app.Environment.IsDevelopment()
+    || app.Configuration.GetValue<bool>("FlowBoard:InitializeDatabaseOnStartup");
+var applySchemaChangesOnStartup = app.Environment.IsDevelopment()
+    || app.Configuration.GetValue<bool>("FlowBoard:ApplySchemaChangesOnStartup");
+var seedDemoDataOnStartup = app.Environment.IsDevelopment()
+    || app.Configuration.GetValue<bool>("FlowBoard:SeedDemoDataOnStartup");
+
+if (initializeDatabaseOnStartup)
+{
+    await SeedData.InitializeAsync(
+        app.Services,
+        applySchemaChangesOnStartup,
+        seedDemoDataOnStartup);
+}
 
 app.Run();

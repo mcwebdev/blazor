@@ -1,0 +1,51 @@
+@namespace FlowBoard.Web.Components.UI.Analytics
+
+<div class="mix-bar" role="img" aria-label="@AriaLabel">
+    @if (Total == 0)
+    {
+        <p class="mix-empty">No data yet.</p>
+    }
+    else
+    {
+        <div class="mix-track">
+            @foreach (var segment in Segments)
+            {
+                var width = ((double)segment.Count / Total) * 100;
+                if (width <= 0) continue;
+                <a class="mix-segment"
+                   style="width: @(width.ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%; background: @segment.Color;"
+                   href="@segment.Href"
+                   title="@segment.Label: @segment.Count">
+                    <span class="sr-only">@segment.Label @segment.Count</span>
+                </a>
+            }
+        </div>
+
+        <ul class="mix-legend">
+            @foreach (var segment in Segments)
+            {
+                <li>
+                    <span class="mix-dot" style="background: @segment.Color;"></span>
+                    @if (!string.IsNullOrEmpty(segment.Href))
+                    {
+                        <a href="@segment.Href">@segment.Label</a>
+                    }
+                    else
+                    {
+                        <span>@segment.Label</span>
+                    }
+                    <strong>@segment.Count</strong>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    public sealed record Segment(string Label, int Count, string Color, string? Href = null);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Segment> Segments { get; set; } = [];
+    [Parameter] public string AriaLabel { get; set; } = "Distribution chart";
+
+    private int Total => Segments.Sum(s => s.Count);
+}

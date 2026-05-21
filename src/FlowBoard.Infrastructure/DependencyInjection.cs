@@ -47,6 +47,7 @@ public static class DependencyInjection
         // ── Application Services ───────────────────────────────────
         services.AddScoped<IBoardService, BoardService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
 
         return services;

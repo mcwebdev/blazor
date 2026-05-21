@@ -195,6 +195,26 @@ public class BoardService : IBoardService
             .ToListAsync();
     }
 
+    public Task<bool> UserCanAccessBoardAsync(Guid boardId, string userId)
+    {
+        return _db.Boards
+            .Where(board => board.Id == boardId)
+            .AsNoTracking()
+            .Join(
+                _db.WorkspaceMembers.Where(member => member.UserId == userId),
+                board => board.WorkspaceId,
+                member => member.WorkspaceId,
+                (_, _) => true)
+            .AnyAsync();
+    }
+
+    public Task<bool> TaskBelongsToBoardAsync(Guid boardId, Guid taskId)
+    {
+        return _db.TaskItems
+            .AsNoTracking()
+            .AnyAsync(task => task.Id == taskId && task.BoardId == boardId);
+    }
+
     public async Task<TaskDetailDto?> GetTaskAsync(Guid taskId)
     {
         var task = await _db.TaskItems
@@ -252,7 +272,7 @@ public class BoardService : IBoardService
             assigneeName,
             task.AssigneeUserId,
             task.DueDateUtc,
-            task.RowVersion,
+            task.Version,
             labels,
             checklists,
             comments
@@ -295,7 +315,7 @@ public class BoardService : IBoardService
             SortOrder = await GetNextSortOrderAsync(targetColumn.Id),
             CompletedAtUtc = taskDto.Status == TaskItemStatus.Done ? now : null,
             CreatedAtUtc = now,
-            RowVersion = Guid.NewGuid().ToByteArray()
+            Version = Guid.NewGuid()
         };
 
         _db.TaskItems.Add(task);
@@ -341,7 +361,7 @@ public class BoardService : IBoardService
         var beforeDueDate = task.DueDateUtc;
 
         // Optimistic concurrency check
-        _db.Entry(task).Property(t => t.RowVersion).OriginalValue = taskDto.RowVersion;
+        _db.Entry(task).Property(t => t.Version).OriginalValue = taskDto.Version;
 
         task.Title = title;
         task.Description = NormalizeOptionalText(taskDto.Description);
@@ -362,7 +382,7 @@ public class BoardService : IBoardService
 
         task.LastModifiedByUserId = _currentUser.UserId;
         task.UpdatedAtUtc = DateTime.UtcNow;
-        task.RowVersion = Guid.NewGuid().ToByteArray();
+        task.Version = Guid.NewGuid();
 
         var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
         await RecordActivityAsync(
@@ -401,8 +421,8 @@ public class BoardService : IBoardService
         if (string.IsNullOrWhiteSpace(title))
             throw new InvalidOperationException("Task title is required.");
 
-        // Use the current RowVersion from DB — no concurrency check needed
-        // (We intentionally skip setting OriginalValue on RowVersion)
+        // Use the current Version from DB — no concurrency check needed
+        // (We intentionally skip setting OriginalValue on Version)
 
         task.Title = title;
         task.Description = NormalizeOptionalText(taskDto.Description);
@@ -423,7 +443,7 @@ public class BoardService : IBoardService
 
         task.LastModifiedByUserId = _currentUser.UserId;
         task.UpdatedAtUtc = DateTime.UtcNow;
-        task.RowVersion = Guid.NewGuid().ToByteArray();
+        task.Version = Guid.NewGuid();
 
         var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
         await RecordActivityAsync(
@@ -476,7 +496,7 @@ public class BoardService : IBoardService
             : null;
         task.LastModifiedByUserId = _currentUser.UserId;
         task.UpdatedAtUtc = DateTime.UtcNow;
-        task.RowVersion = Guid.NewGuid().ToByteArray();
+        task.Version = Guid.NewGuid();
 
         var workspaceId = await GetWorkspaceIdForBoardAsync(task.BoardId);
         await RecordActivityAsync(

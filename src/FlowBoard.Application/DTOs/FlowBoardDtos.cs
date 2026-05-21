@@ -46,7 +46,7 @@ public class TaskDetailDto
     public string? AssigneeName { get; set; }
     public string? AssigneeUserId { get; set; }
     public DateTime? DueDateUtc { get; set; }
-    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+    public Guid Version { get; set; } = Guid.NewGuid();
 
     public IReadOnlyList<TaskLabelDto> Labels { get; set; } = [];
     public IReadOnlyList<TaskChecklistItemDto> Checklists { get; set; } = [];
@@ -65,7 +65,7 @@ public class TaskDetailDto
         string? assigneeName,
         string? assigneeUserId,
         DateTime? dueDateUtc,
-        byte[] rowVersion,
+        Guid version,
         IReadOnlyList<TaskLabelDto>? labels = null,
         IReadOnlyList<TaskChecklistItemDto>? checklists = null,
         IReadOnlyList<TaskCommentDto>? comments = null)
@@ -80,7 +80,7 @@ public class TaskDetailDto
         AssigneeName = assigneeName;
         AssigneeUserId = assigneeUserId;
         DueDateUtc = dueDateUtc;
-        RowVersion = rowVersion;
+        Version = version;
         Labels = labels ?? [];
         Checklists = checklists ?? [];
         Comments = comments ?? [];

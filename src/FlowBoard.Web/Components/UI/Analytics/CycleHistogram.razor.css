@@ -1,0 +1,48 @@
+.cycle-histogram ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.cycle-histogram li {
+    display: grid;
+    grid-template-columns: 64px 1fr 32px;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.bucket-label {
+    color: #45525c;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.bucket-track {
+    height: 10px;
+    background: #eef2f4;
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px #dce3e8;
+}
+
+.bucket-fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #4fb286, #2f7d57);
+    border-radius: 999px;
+}
+
+.bucket-count {
+    text-align: right;
+    color: #1d262d;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.cycle-empty {
+    margin: 0;
+    color: #65717a;
+    font-size: 0.9rem;
+}

@@ -60,7 +60,11 @@ public class FlowBoardDbContext : IdentityDbContext<ApplicationUser>
                 .HasForeignKey(t => t.ColumnId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.Property(t => t.RowVersion)
+            entity.Property(t => t.Version)
+                .HasColumnName("RowVersion")
+                .HasConversion(
+                    version => version.ToByteArray(),
+                    value => new Guid(value))
                 .IsConcurrencyToken();
 
             entity.HasIndex(t => new { t.BoardId, t.ColumnId, t.SortOrder });

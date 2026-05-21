@@ -1,0 +1,56 @@
+@namespace FlowBoard.Web.Components.UI.Analytics
+@using FlowBoard.Application.DTOs
+
+<div class="workload-bars">
+    @if (Rows.Count == 0)
+    {
+        <p class="workload-empty">No assignees with tasks yet.</p>
+    }
+    else
+    {
+        <ol>
+            @foreach (var row in Rows)
+            {
+                var openWidth = MaxOpen == 0 ? 0 : (double)row.OpenCount / MaxOpen * 100;
+                var overdueWidth = MaxOpen == 0 ? 0 : (double)row.OverdueCount / MaxOpen * 100;
+                var href = BuildHref(row);
+                <li>
+                    @if (!string.IsNullOrEmpty(href))
+                    {
+                        <a class="workload-name" href="@href">@row.AssigneeName</a>
+                    }
+                    else
+                    {
+                        <span class="workload-name">@row.AssigneeName</span>
+                    }
+                    <div class="workload-track" aria-hidden="true">
+                        <span class="workload-fill"
+                              style="width: @(openWidth.ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%;"></span>
+                        @if (row.OverdueCount > 0)
+                        {
+                            <span class="workload-overdue"
+                                  style="width: @(overdueWidth.ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%;"></span>
+                        }
+                    </div>
+                    <span class="workload-counts">
+                        <strong>@row.OpenCount</strong> open
+                        @if (row.OverdueCount > 0)
+                        {
+                            <span class="workload-overdue-chip">@row.OverdueCount overdue</span>
+                        }
+                        <small>@row.CompletedLast7Days done · 7d</small>
+                    </span>
+                </li>
+            }
+        </ol>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<WorkloadRowDto> Rows { get; set; } = [];
+    [Parameter] public Func<WorkloadRowDto, string?>? HrefFor { get; set; }
+
+    private int MaxOpen => Rows.Count == 0 ? 0 : Rows.Max(r => r.OpenCount);
+
+    private string? BuildHref(WorkloadRowDto row) => HrefFor?.Invoke(row);
+}

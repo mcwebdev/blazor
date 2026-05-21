@@ -9,11 +9,11 @@
 @using FlowBoard.Web.Services
 @using FlowBoard.Web.Models
 @using FlowBoard.Web.Components.UI
-@using Microsoft.AspNetCore.SignalR.Client
 @inject IBoardService BoardService
 @inject BoardUpdateNotifier BoardUpdates
 @inject AppActionDispatcher AppActions
-@inject NavigationManager Navigation
+@inject ILogger<Board> Logger
+@inject IJSRuntime JS
 
 <PageTitle>@(BoardData?.Name ?? "Board") - FlowBoard</PageTitle>
 
@@ -57,6 +57,15 @@ else
 
     <section class="board-workspace">
         <div class="board-main-content" style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="board-guidance" role="note">
+                <span class="guidance-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 4h10M3 8h10M3 12h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    </svg>
+                </span>
+                <span>Drag cards between columns to update status and record board activity.</span>
+            </div>
+
             <TaskFilterBar BoardMembers="BoardMembers" OnFilterChanged="HandleFilterChanged" />
 
             <div class="kanban-preview board-kanban">
@@ -101,7 +110,7 @@ else
         </aside>
     </section>
 
-    <TaskDrawer @ref="taskDrawer" OnTaskSaved="HandleTaskSavedAsync" HubConnection="hubConnection" />
+    <TaskDrawer @ref="taskDrawer" OnTaskSaved="HandleTaskSavedAsync" OnFieldFocused="HandleTaskFieldFocusedAsync" OnFieldBlurred="HandleTaskFieldBlurredAsync" />
     <BoardReplayPanel BoardId="BoardData.Id" IsOpen="ShowReplayPanel" OnClose="() => ShowReplayPanel = false" />
 }
 
@@ -112,97 +121,117 @@ else
     private BoardDto? BoardData;
     private IReadOnlyList<ActivityEntryDto> RecentActivity = [];
     private bool IsLoading = true;
-    private string LiveStatusText = "Live sync ready";
-    
+    private IDisposable? newTaskRegistration;
     private TaskCardDto? DraggedTask;
     private TaskDrawer? taskDrawer;
     private TaskFilterCriteria Filter = new();
     private IReadOnlyList<BoardMemberDto> BoardMembers = [];
     private IReadOnlyList<BoardPresenceDto> ActiveUsers = [];
-    private HubConnection? hubConnection;
-    private HubConnectionState ConnectionState = HubConnectionState.Disconnected;
+    private RealtimeConnectionState ConnectionState = RealtimeConnectionState.Disconnected;
     private bool ShowReplayPanel;
+    private IJSObjectReference? realtimeModule;
+    private DotNetObjectReference<Board>? boardReference;
+    private bool RealtimeInitialized;
+    private IDisposable? boardReplayRegistration;
 
     protected override async Task OnInitializedAsync()
     {
-        AppActions.NewTaskRequested += OpenCreateTaskDrawerAsync;
         await LoadBoardDataAsync();
-        await InitializeSignalRAsync();
+
+        if (BoardData is not null)
+        {
+            newTaskRegistration = AppActions.RegisterNewTaskHandler(OpenCreateTaskDrawerAsync);
+            boardReplayRegistration = AppActions.RegisterBoardReplayHandler(OpenReplayAsync);
+        }
     }
 
-    private async Task InitializeSignalRAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (BoardData is null)
+        if (firstRender)
+        {
+            await InitializeRealtimeAsync();
+        }
+    }
+
+    private async Task InitializeRealtimeAsync()
+    {
+        if (RealtimeInitialized || BoardData is null)
             return;
 
-        hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("/hub/board"))
-            .WithAutomaticReconnect()
-            .Build();
+        RealtimeInitialized = true;
 
-        hubConnection.On<BoardRealtimeEvent>("BoardActivityRecorded", async (change) =>
+        try
         {
-            if (change.BoardId != BoardData.Id)
-                return;
+            boardReference = DotNetObjectReference.Create(this);
+            realtimeModule = await JS.InvokeAsync<IJSObjectReference>("import", "/js/boardRealtime.js");
+            await realtimeModule.InvokeVoidAsync("connect", BoardData.Id, boardReference);
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Board realtime connection failed for board {BoardId}.", BoardData?.Id);
+            ConnectionState = RealtimeConnectionState.Disconnected;
+        }
+    }
 
-            await InvokeAsync(async () =>
-            {
-                LiveStatusText = change.Summary;
-                await LoadBoardDataAsync();
-                StateHasChanged();
-            });
+    [JSInvokable]
+    public async Task HandleBoardActivityRecorded(string boardId, string summary)
+    {
+        if (!IsCurrentBoard(boardId))
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            await LoadBoardDataAsync();
+            StateHasChanged();
         });
+    }
 
-        hubConnection.On<IReadOnlyList<BoardPresenceDto>>("UserJoinedBoard", async (users) =>
+    [JSInvokable]
+    public Task HandlePresenceChanged(BoardPresenceDto[] users)
+    {
+        return InvokeAsync(() =>
         {
-            await InvokeAsync(() =>
-            {
-                ActiveUsers = users;
-                StateHasChanged();
-            });
+            ActiveUsers = users;
+            StateHasChanged();
         });
+    }
 
-        hubConnection.On<IReadOnlyList<BoardPresenceDto>>("UserLeftBoard", async (users) =>
+    [JSInvokable]
+    public Task HandleConnectionStateChanged(string state)
+    {
+        return InvokeAsync(() =>
         {
-            await InvokeAsync(() =>
-            {
-                ActiveUsers = users;
-                StateHasChanged();
-            });
+            ConnectionState = Enum.TryParse<RealtimeConnectionState>(state, ignoreCase: true, out var parsed)
+                ? parsed
+                : RealtimeConnectionState.Disconnected;
+            StateHasChanged();
         });
+    }
 
-        hubConnection.Reconnecting += async (_) =>
+    [JSInvokable]
+    public Task HandleUserStartedEditing(string userName, string taskId, string fieldName)
+    {
+        if (!Guid.TryParse(taskId, out var parsedTaskId))
+            return Task.CompletedTask;
+
+        return InvokeAsync(() =>
         {
-            await InvokeAsync(() =>
-            {
-                ConnectionState = HubConnectionState.Reconnecting;
-                StateHasChanged();
-            });
-        };
+            taskDrawer?.ApplyUserStartedEditing(userName, parsedTaskId, fieldName);
+            StateHasChanged();
+        });
+    }
 
-        hubConnection.Reconnected += async (_) =>
+    [JSInvokable]
+    public Task HandleUserStoppedEditing(string userName, string taskId, string fieldName)
+    {
+        if (!Guid.TryParse(taskId, out var parsedTaskId))
+            return Task.CompletedTask;
+
+        return InvokeAsync(() =>
         {
-            await InvokeAsync(async () =>
-            {
-                ConnectionState = HubConnectionState.Connected;
-                if (BoardData is not null)
-                    await hubConnection.SendAsync("JoinBoard", BoardData.Id);
-                StateHasChanged();
-            });
-        };
-
-        hubConnection.Closed += async (_) =>
-        {
-            await InvokeAsync(() =>
-            {
-                ConnectionState = HubConnectionState.Disconnected;
-                StateHasChanged();
-            });
-        };
-
-        await hubConnection.StartAsync();
-        ConnectionState = HubConnectionState.Connected;
-        await hubConnection.SendAsync("JoinBoard", BoardData.Id);
+            taskDrawer?.ApplyUserStoppedEditing(userName, parsedTaskId, fieldName);
+            StateHasChanged();
+        });
     }
 
     private async Task LoadBoardDataAsync()
@@ -309,9 +338,31 @@ else
         await NotifyBoardChangedAsync(args.EventType, args.Summary);
     }
 
+    private async Task HandleTaskFieldFocusedAsync(TaskFieldEditArgs args)
+    {
+        if (realtimeModule is null)
+            return;
+
+        await realtimeModule.InvokeVoidAsync("startEditing", args.BoardId, args.TaskId, args.FieldName);
+    }
+
+    private async Task HandleTaskFieldBlurredAsync(TaskFieldEditArgs args)
+    {
+        if (realtimeModule is null)
+            return;
+
+        await realtimeModule.InvokeVoidAsync("stopEditing", args.BoardId, args.TaskId, args.FieldName);
+    }
+
     private void ToggleReplay()
     {
         ShowReplayPanel = !ShowReplayPanel;
+    }
+
+    private Task OpenReplayAsync()
+    {
+        ShowReplayPanel = true;
+        return InvokeAsync(StateHasChanged);
     }
 
     private Task NotifyBoardChangedAsync(string eventType, string summary)
@@ -319,7 +370,6 @@ else
         if (BoardData is null)
             return Task.CompletedTask;
 
-        LiveStatusText = summary;
         return BoardUpdates.NotifyBoardChangedAsync(new BoardRealtimeEvent(
             BoardData.Id,
             eventType,
@@ -357,22 +407,35 @@ else
         return $"{Math.Max(1, (int)elapsed.TotalDays)}d ago";
     }
 
-    private static string FormatTaskDate(DateTime dueDateUtc)
+    private bool IsCurrentBoard(string boardId)
     {
-        return dueDateUtc.ToString("MMM d");
+        return BoardData is not null
+            && Guid.TryParse(boardId, out var parsedBoardId)
+            && parsedBoardId == BoardData.Id;
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (hubConnection is not null)
+        if (realtimeModule is not null && BoardData is not null)
         {
-            if (BoardData is not null)
+            try
             {
-                await hubConnection.SendAsync("LeaveBoard", BoardData.Id);
+                await realtimeModule.InvokeVoidAsync("disconnect", BoardData.Id);
+                await realtimeModule.DisposeAsync();
             }
-            await hubConnection.DisposeAsync();
+            catch (JSDisconnectedException ex)
+            {
+                Logger.LogDebug(ex, "Browser disconnected before board realtime cleanup completed.");
+            }
+            catch (JSException ex)
+            {
+                Logger.LogDebug(ex, "Board realtime cleanup failed for board {BoardId}.", BoardData.Id);
+            }
         }
+
+        boardReference?.Dispose();
         
-        AppActions.NewTaskRequested -= OpenCreateTaskDrawerAsync;
+        newTaskRegistration?.Dispose();
+        boardReplayRegistration?.Dispose();
     }
 }

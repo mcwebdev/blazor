@@ -1,0 +1,90 @@
+.analytics-page {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.analytics-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.analytics-header h1 {
+    margin: 0.1rem 0 0.35rem 0;
+    font-size: 1.7rem;
+    color: #1d262d;
+}
+
+.analytics-subtitle {
+    margin: 0;
+    color: #65717a;
+    font-size: 0.9rem;
+    max-width: 60ch;
+}
+
+.analytics-back {
+    align-self: center;
+    color: #276ef1;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.analytics-back:hover,
+.analytics-back:focus-visible {
+    text-decoration: underline;
+    outline: none;
+}
+
+.analytics-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1rem;
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1rem;
+}
+
+.analytics-card {
+    grid-column: span 6;
+    border: 1px solid #dce3e8;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(23, 32, 38, 0.06);
+    padding: 1.1rem 1.15rem 1.2rem 1.15rem;
+    display: grid;
+    gap: 0.85rem;
+}
+
+.analytics-card-wide {
+    grid-column: span 12;
+}
+
+.analytics-card header {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.analytics-card h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: #1d262d;
+    letter-spacing: -0.005em;
+}
+
+.analytics-card header p {
+    margin: 0;
+    color: #65717a;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 1080px) {
+    .analytics-card,
+    .analytics-card-wide {
+        grid-column: span 12;
+    }
+}

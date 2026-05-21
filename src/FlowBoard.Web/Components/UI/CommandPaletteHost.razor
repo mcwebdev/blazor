@@ -1,0 +1,310 @@
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@using FlowBoard.Web.Services
+@inject AppActionDispatcher AppActions
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<button type="button" class="utility-button command-trigger" title="Open command palette" aria-label="Open command palette" @onclick="OpenAsync">⌘K</button>
+
+@if (IsOpen)
+{
+    <div class="command-overlay" @onclick="Close">
+        <section class="command-panel" role="dialog" aria-modal="true" aria-label="Command palette" @onclick:stopPropagation>
+            <header class="command-search-row">
+                <span class="command-search-icon" aria-hidden="true">⌕</span>
+                <input @ref="SearchInput"
+                       value="@SearchText"
+                       @oninput="HandleSearchInput"
+                       @onkeydown="HandleKeyDown"
+                       class="command-search"
+                       placeholder="Search commands, boards, and tools" />
+                <button type="button" class="command-close" title="Close command palette" aria-label="Close command palette" @onclick="Close">×</button>
+            </header>
+
+            <div class="command-list" role="listbox">
+                @if (VisibleCommands.Count == 0)
+                {
+                    <p class="command-empty">No matching commands.</p>
+                }
+                else
+                {
+                    @foreach (var command in VisibleCommands.Select((item, index) => new { item, index }))
+                    {
+                        <button type="button"
+                                class="command-item @(command.index == SelectedIndex ? "selected" : "")"
+                                disabled="@(!command.item.IsEnabled)"
+                                role="option"
+                                aria-selected="@(command.index == SelectedIndex)"
+                                @onmouseenter="@(() => SelectedIndex = command.index)"
+                                @onclick="@(() => ExecuteAsync(command.item))">
+                            <span class="command-icon">@command.item.Icon</span>
+                            <span class="command-copy">
+                                <strong>@command.item.Title</strong>
+                                <small>@command.item.Description</small>
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(command.item.Shortcut))
+                            {
+                                <kbd>@command.item.Shortcut</kbd>
+                            }
+                        </button>
+                    }
+                }
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private ElementReference SearchInput;
+    private IJSObjectReference? Module;
+    private DotNetObjectReference<CommandPaletteHost>? DotNetReference;
+    private bool IsOpen;
+    private bool ShouldFocus;
+    private string SearchText = string.Empty;
+    private int SelectedIndex;
+
+    private IReadOnlyList<CommandItem> Commands => new List<CommandItem>
+    {
+        new(
+            "Create task",
+            "Open the task drawer for the active board",
+            "N",
+            "create task new card",
+            AppActions.CanRequestNewTask,
+            () => AppActions.RequestNewTaskAsync()),
+        new(
+            "Open dashboard",
+            "Go to workspace metrics and recent activity",
+            "⌂",
+            "home dashboard metrics",
+            true,
+            () => NavigateAsync("/")),
+        new(
+            "Open board",
+            "Go to the Product Launch kanban board",
+            "B",
+            "board kanban product launch",
+            true,
+            () => NavigateAsync("/boards/demo")),
+        new(
+            "Start board replay",
+            "Open the live activity timeline for the current board",
+            "R",
+            "replay timeline history activity",
+            AppActions.CanRequestBoardReplay,
+            () => AppActions.RequestBoardReplayAsync()),
+        new(
+            "Open analytics",
+            "Workspace analytics rollup",
+            "A",
+            "analytics metrics charts drilldown rollup",
+            true,
+            () => NavigateAsync("/analytics")),
+        new(
+            "Open board analytics",
+            "Open metrics for the Product Launch board",
+            "M",
+            "board analytics metrics burndown workload cycle time",
+            true,
+            () => NavigateAsync("/boards/demo/analytics")),
+        new(
+            "Drill-down: overdue tasks",
+            "Open the overdue-only drill-down for the demo board",
+            "O",
+            "overdue drilldown filter analytics late",
+            true,
+            () => NavigateAsync("/boards/demo/analytics/tasks?metric=Overdue")),
+        new(
+            "Drill-down: completed this week",
+            "Open completed-last-7-days drill-down for the demo board",
+            "C",
+            "completed week drilldown analytics done",
+            true,
+            () => NavigateAsync("/boards/demo/analytics/tasks?metric=CompletedThisWeek")),
+        new(
+            "Check runtime health",
+            "Open the service health endpoint",
+            "H",
+            "health deploy cloud run firebase",
+            true,
+            () => NavigateAsync("/health"))
+    };
+
+    private IReadOnlyList<CommandItem> VisibleCommands
+    {
+        get
+        {
+            var search = SearchText.Trim();
+            var commands = string.IsNullOrWhiteSpace(search)
+                ? Commands
+                : Commands
+                    .Where(command =>
+                        command.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        || command.Description.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        || command.Keywords.Contains(search, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+            return commands
+                .OrderByDescending(command => command.IsEnabled)
+                .ThenBy(command => command.Title)
+                .ToList();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        AppActions.StateChanged += HandleActionStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            DotNetReference = DotNetObjectReference.Create(this);
+            Module = await JS.InvokeAsync<IJSObjectReference>("import", "/js/commandPalette.js");
+            await Module.InvokeVoidAsync("register", DotNetReference);
+        }
+
+        if (ShouldFocus)
+        {
+            ShouldFocus = false;
+            await SearchInput.FocusAsync();
+        }
+    }
+
+    [JSInvokable]
+    public Task OpenFromShortcut()
+    {
+        return OpenAsync();
+    }
+
+    private Task OpenAsync()
+    {
+        SearchText = string.Empty;
+        SelectedIndex = GetFirstEnabledIndex(VisibleCommands);
+        IsOpen = true;
+        ShouldFocus = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private void Close()
+    {
+        IsOpen = false;
+        SearchText = string.Empty;
+        SelectedIndex = 0;
+    }
+
+    private void HandleSearchInput(ChangeEventArgs args)
+    {
+        SearchText = args.Value?.ToString() ?? string.Empty;
+        SelectedIndex = GetFirstEnabledIndex(VisibleCommands);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            Close();
+            return;
+        }
+
+        if (args.Key == "ArrowDown")
+        {
+            MoveSelection(1);
+            return;
+        }
+
+        if (args.Key == "ArrowUp")
+        {
+            MoveSelection(-1);
+            return;
+        }
+
+        if (args.Key == "Enter" && VisibleCommands.Count > 0)
+        {
+            var index = Math.Clamp(SelectedIndex, 0, VisibleCommands.Count - 1);
+            await ExecuteAsync(VisibleCommands[index]);
+        }
+    }
+
+    private void MoveSelection(int direction)
+    {
+        var commands = VisibleCommands;
+        if (commands.Count == 0)
+            return;
+
+        var index = SelectedIndex;
+        for (var i = 0; i < commands.Count; i++)
+        {
+            index = (index + direction + commands.Count) % commands.Count;
+            if (commands[index].IsEnabled)
+            {
+                SelectedIndex = index;
+                return;
+            }
+        }
+    }
+
+    private async Task ExecuteAsync(CommandItem command)
+    {
+        if (!command.IsEnabled)
+            return;
+
+        Close();
+        await command.Execute();
+    }
+
+    private Task NavigateAsync(string href)
+    {
+        Navigation.NavigateTo(href);
+        return Task.CompletedTask;
+    }
+
+    private void HandleActionStateChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static int GetFirstEnabledIndex(IReadOnlyList<CommandItem> commands)
+    {
+        var index = commands
+            .Select((command, i) => new { command, i })
+            .FirstOrDefault(item => item.command.IsEnabled)
+            ?.i;
+
+        return index.GetValueOrDefault();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        AppActions.StateChanged -= HandleActionStateChanged;
+
+        if (Module is not null)
+        {
+            try
+            {
+                await Module.InvokeVoidAsync("unregister");
+                await Module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        DotNetReference?.Dispose();
+    }
+
+    private sealed record CommandItem(
+        string Title,
+        string Description,
+        string Icon,
+        string Keywords,
+        bool IsEnabled,
+        Func<Task> Execute)
+    {
+        public string Shortcut => Icon.Length == 1 && char.IsLetterOrDigit(Icon[0])
+            ? Icon
+            : string.Empty;
+    }
+}

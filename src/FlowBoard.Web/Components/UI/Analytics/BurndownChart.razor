@@ -1,0 +1,111 @@
+@namespace FlowBoard.Web.Components.UI.Analytics
+@using FlowBoard.Application.DTOs
+@using System.Globalization
+
+<div class="burndown-chart">
+    @if (Points.Count == 0)
+    {
+        <p class="burndown-empty">No history yet.</p>
+    }
+    else
+    {
+        <svg viewBox="0 0 @Width @Height" preserveAspectRatio="none" role="img" aria-label="14-day outstanding-task burndown">
+            <defs>
+                <linearGradient id="burndown-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#276ef1" stop-opacity="0.28"></stop>
+                    <stop offset="100%" stop-color="#276ef1" stop-opacity="0.0"></stop>
+                </linearGradient>
+            </defs>
+
+            @* Horizontal gridlines *@
+            @for (var i = 1; i < 4; i++)
+            {
+                var y = Padding + (PlotHeight * i / 4);
+                <line x1="@Padding" x2="@(Width - Padding)" y1="@y" y2="@y" stroke="#eef2f4" stroke-width="1" />
+            }
+
+            <path d="@AreaPath" fill="url(#burndown-fill)" stroke="none" />
+            <path d="@LinePath" fill="none" stroke="#276ef1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+
+            @for (var i = 0; i < Points.Count; i++)
+            {
+                var p = ScaledPoint(i);
+                <circle cx="@(p.X.ToString("F2", CultureInfo.InvariantCulture))"
+                        cy="@(p.Y.ToString("F2", CultureInfo.InvariantCulture))"
+                        r="2.4"
+                        fill="#ffffff"
+                        stroke="#276ef1"
+                        stroke-width="1.5">
+                    <title>@Points[i].DateUtc.ToString("MMM d"): @Points[i].Outstanding outstanding · @Points[i].Completed completed</title>
+                </circle>
+            }
+        </svg>
+
+        <div class="burndown-axis">
+            <span>@Points.First().DateUtc.ToString("MMM d")</span>
+            <span>@Points.Last().DateUtc.ToString("MMM d")</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<BurndownPointDto> Points { get; set; } = [];
+
+    private const int Width = 600;
+    private const int Height = 220;
+    private const int Padding = 18;
+    private const int PlotHeight = Height - (Padding * 2);
+    private const int PlotWidth = Width - (Padding * 2);
+
+    private int MaxOutstanding => Points.Count == 0 ? 1 : Math.Max(1, Points.Max(p => p.Outstanding));
+
+    private (double X, double Y) ScaledPoint(int index)
+    {
+        var step = Points.Count <= 1 ? 0 : (double)PlotWidth / (Points.Count - 1);
+        var x = Padding + (step * index);
+        var ratio = (double)Points[index].Outstanding / MaxOutstanding;
+        var y = Padding + (PlotHeight - (PlotHeight * ratio));
+        return (x, y);
+    }
+
+    private string LinePath
+    {
+        get
+        {
+            if (Points.Count == 0) return string.Empty;
+            var sb = new System.Text.StringBuilder();
+            for (var i = 0; i < Points.Count; i++)
+            {
+                var p = ScaledPoint(i);
+                sb.Append(i == 0 ? 'M' : 'L');
+                sb.Append(p.X.ToString("F2", CultureInfo.InvariantCulture));
+                sb.Append(' ');
+                sb.Append(p.Y.ToString("F2", CultureInfo.InvariantCulture));
+                sb.Append(' ');
+            }
+            return sb.ToString().TrimEnd();
+        }
+    }
+
+    private string AreaPath
+    {
+        get
+        {
+            if (Points.Count == 0) return string.Empty;
+            var sb = new System.Text.StringBuilder(LinePath);
+            var lastX = ScaledPoint(Points.Count - 1).X;
+            var firstX = ScaledPoint(0).X;
+            var baseY = Padding + PlotHeight;
+            sb.Append(" L ");
+            sb.Append(lastX.ToString("F2", CultureInfo.InvariantCulture));
+            sb.Append(' ');
+            sb.Append(baseY);
+            sb.Append(" L ");
+            sb.Append(firstX.ToString("F2", CultureInfo.InvariantCulture));
+            sb.Append(' ');
+            sb.Append(baseY);
+            sb.Append(" Z");
+            return sb.ToString();
+        }
+    }
+}

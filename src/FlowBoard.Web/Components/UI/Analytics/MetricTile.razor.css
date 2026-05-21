@@ -1,0 +1,54 @@
+.metric-tile {
+    display: grid;
+    align-content: space-between;
+    gap: 0.4rem;
+    min-height: 132px;
+    padding: 1rem;
+    border: 1px solid #dce3e8;
+    border-top: 4px solid #276ef1;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(23, 32, 38, 0.06);
+    color: inherit;
+    text-decoration: none;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.metric-tile:hover,
+.metric-tile:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 32px rgba(23, 32, 38, 0.1);
+    outline: none;
+}
+
+.metric-tile-label {
+    color: #65717a;
+    font-weight: 750;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.metric-tile strong {
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.metric-tile small {
+    color: #65717a;
+}
+
+.metric-tile-action {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #276ef1;
+    letter-spacing: 0.02em;
+}
+
+.metric-tile.tone-warning { border-top-color: #d97706; }
+.metric-tile.tone-warning .metric-tile-action { color: #d97706; }
+
+.metric-tile.tone-success { border-top-color: #4fb286; }
+.metric-tile.tone-success .metric-tile-action { color: #2f7d57; }
+
+.metric-tile.tone-info { border-top-color: #4b6bfb; }

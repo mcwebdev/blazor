@@ -1,5 +1,33 @@
 @rendermode InteractiveServer
+@implements IDisposable
 @using FlowBoard.Web.Services
 @inject AppActionDispatcher AppActions
 
-<button type="button" class="primary-action" @onclick="AppActions.RequestNewTaskAsync">New task</button>
+<button type="button"
+        class="primary-action"
+        disabled="@(!AppActions.CanRequestNewTask)"
+        title="@ButtonTitle"
+        @onclick="AppActions.RequestNewTaskAsync">
+    New task
+</button>
+
+@code {
+    private string ButtonTitle => AppActions.CanRequestNewTask
+        ? "Create task"
+        : "Open the dashboard or board to create a task";
+
+    protected override void OnInitialized()
+    {
+        AppActions.StateChanged += HandleStateChanged;
+    }
+
+    private void HandleStateChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AppActions.StateChanged -= HandleStateChanged;
+    }
+}

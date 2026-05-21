@@ -6,7 +6,10 @@ using Microsoft.AspNetCore.SignalR;
 namespace FlowBoard.Web.Hubs;
 
 [Authorize]
-public sealed class BoardHub(IPresenceService presenceService) : Hub<IBoardClient>
+public sealed class BoardHub(
+    IPresenceService presenceService,
+    IBoardService boardService,
+    ILogger<BoardHub> logger) : Hub<IBoardClient>
 {
     public async Task JoinBoard(Guid boardId)
     {
@@ -15,6 +18,12 @@ public sealed class BoardHub(IPresenceService presenceService) : Hub<IBoardClien
 
         if (userId is null)
             return;
+
+        if (!await boardService.UserCanAccessBoardAsync(boardId, userId))
+        {
+            logger.LogWarning("User {UserId} attempted to join unauthorized board {BoardId}.", userId, boardId);
+            return;
+        }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GetBoardGroup(boardId));
         await presenceService.JoinBoardAsync(boardId, Context.ConnectionId, userId, userName);
@@ -25,11 +34,14 @@ public sealed class BoardHub(IPresenceService presenceService) : Hub<IBoardClien
 
     public async Task LeaveBoard(Guid boardId)
     {
-        await presenceService.LeaveBoardAsync(Context.ConnectionId);
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, GetBoardGroup(boardId));
+        var activeBoardId = await presenceService.LeaveBoardAsync(Context.ConnectionId);
 
-        var activeUsers = await presenceService.GetActiveUsersAsync(boardId);
-        await Clients.Group(GetBoardGroup(boardId)).UserLeftBoard(activeUsers);
+        if (activeBoardId.HasValue)
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, GetBoardGroup(activeBoardId.Value));
+            var activeUsers = await presenceService.GetActiveUsersAsync(activeBoardId.Value);
+            await Clients.Group(GetBoardGroup(activeBoardId.Value)).UserLeftBoard(activeUsers);
+        }
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -47,16 +59,44 @@ public sealed class BoardHub(IPresenceService presenceService) : Hub<IBoardClien
 
     public async Task StartEditing(Guid boardId, Guid taskId, string fieldName)
     {
+        if (!await CanBroadcastEditingStateAsync(boardId, taskId))
+            return;
+
         var userName = Context.User?.Identity?.Name ?? "Unknown";
-        await Clients.Group(GetBoardGroup(boardId)).UserStartedEditing(userName, taskId, fieldName);
+        await Clients.OthersInGroup(GetBoardGroup(boardId)).UserStartedEditing(userName, taskId, fieldName);
     }
 
     public async Task StopEditing(Guid boardId, Guid taskId, string fieldName)
     {
+        if (!await CanBroadcastEditingStateAsync(boardId, taskId))
+            return;
+
         var userName = Context.User?.Identity?.Name ?? "Unknown";
-        await Clients.Group(GetBoardGroup(boardId)).UserStoppedEditing(userName, taskId, fieldName);
+        await Clients.OthersInGroup(GetBoardGroup(boardId)).UserStoppedEditing(userName, taskId, fieldName);
+    }
+
+    private async Task<bool> CanBroadcastEditingStateAsync(Guid boardId, Guid taskId)
+    {
+        var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null)
+            return false;
+
+        var canAccessBoard = await boardService.UserCanAccessBoardAsync(boardId, userId);
+        if (!canAccessBoard)
+        {
+            logger.LogWarning("User {UserId} attempted to broadcast editing state to unauthorized board {BoardId}.", userId, boardId);
+            return false;
+        }
+
+        var taskBelongsToBoard = await boardService.TaskBelongsToBoardAsync(boardId, taskId);
+        if (!taskBelongsToBoard)
+        {
+            logger.LogWarning("User {UserId} attempted to broadcast editing state for task {TaskId} outside board {BoardId}.", userId, taskId, boardId);
+            return false;
+        }
+
+        return true;
     }
 
     public static string GetBoardGroup(Guid boardId) => $"board:{boardId}";
 }
-

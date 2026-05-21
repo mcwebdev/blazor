@@ -1,17 +1,16 @@
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Domain.Enums
-@using Microsoft.AspNetCore.SignalR.Client
 @inject IBoardService BoardService
 @inject ICurrentUserService CurrentUserService
 
-<div class="task-drawer-backdrop @(IsOpen ? "open" : "")" @onclick="Close"></div>
+<div class="task-drawer-backdrop @(IsOpen ? "open" : "")" @onclick="CloseAsync"></div>
 <div class="task-drawer @(IsOpen ? "open" : "")">
     @if (Task != null)
     {
         <div class="drawer-header">
             <h3>@(IsCreateMode ? "New Task" : "Edit Task")</h3>
-            <button type="button" class="close-btn" @onclick="Close">x</button>
+            <button type="button" class="close-btn" @onclick="CloseAsync">x</button>
         </div>
         <div class="drawer-body">
             @if (!string.IsNullOrWhiteSpace(ValidationMessage))
@@ -142,7 +141,7 @@
             }
         </div>
         <div class="drawer-footer">
-            <button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
+            <button type="button" class="btn btn-secondary" @onclick="CloseAsync" disabled="@IsSaving">Cancel</button>
             <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@IsSaving">
                 @(IsSaving ? "Saving..." : IsCreateMode ? "Create Task" : "Save Changes")
             </button>
@@ -181,7 +180,10 @@
     public EventCallback<TaskDrawerSavedArgs> OnTaskSaved { get; set; }
 
     [Parameter]
-    public HubConnection? HubConnection { get; set; }
+    public EventCallback<TaskFieldEditArgs> OnFieldFocused { get; set; }
+
+    [Parameter]
+    public EventCallback<TaskFieldEditArgs> OnFieldBlurred { get; set; }
 
     public bool IsOpen { get; private set; }
     public TaskDetailDto? Task { get; private set; }
@@ -196,7 +198,6 @@
     private string NewCommentText = "";
 
     private Dictionary<string, List<string>> ActiveEditors = new();
-    private bool _isSubscribedToHub;
 
     private static readonly TaskItemStatus[] AvailableStatuses =
     [
@@ -227,8 +228,6 @@
         AvailableLabels = Task is null
             ? []
             : await BoardService.GetLabelsForBoardAsync(Task.BoardId);
-
-        SubscribeToEditingEvents();
 
         IsLoading = false;
         StateHasChanged();
@@ -261,11 +260,9 @@
 
     public async Task CloseAsync()
     {
-        // Notify hub we stopped editing any field
-        if (HubConnection is not null && Task is not null && _currentlyFocusedField is not null)
+        if (!IsCreateMode && Task is not null && _currentlyFocusedField is not null)
         {
-            await HubConnection.SendAsync("StopEditing", Task.BoardId, Task.Id, _currentlyFocusedField);
-            _currentlyFocusedField = null;
+            await OnFieldBlurred.InvokeAsync(new TaskFieldEditArgs(Task.BoardId, Task.Id, _currentlyFocusedField));
         }
 
         IsOpen = false;
@@ -274,13 +271,9 @@
         IsSaving = false;
         ShowConflictModal = false;
         ValidationMessage = null;
+        _currentlyFocusedField = null;
         ActiveEditors = new();
         StateHasChanged();
-    }
-
-    private void Close()
-    {
-        _ = CloseAsync();
     }
 
     private bool ShowConflictModal;
@@ -327,7 +320,7 @@
                     $"Updated {Task.Title.Trim()}."));
             }
 
-            Close();
+            await CloseAsync();
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
@@ -360,7 +353,7 @@
             await OnTaskSaved.InvokeAsync(new TaskDrawerSavedArgs(
                 "TaskUpdated",
                 $"Updated {Task.Title.Trim()} (overwritten)."));
-            Close();
+            await CloseAsync();
         }
         catch (Exception ex)
         {
@@ -369,67 +362,56 @@
         }
     }
 
-    private void HandleConflictDiscard()
+    private async Task HandleConflictDiscard()
     {
         ShowConflictModal = false;
-        Close();
+        await CloseAsync();
     }
 
-    private void SubscribeToEditingEvents()
+    public void ApplyUserStartedEditing(string userName, Guid taskId, string fieldName)
     {
-        if (_isSubscribedToHub || HubConnection is null)
+        if (Task is null || Task.Id != taskId)
             return;
 
-        _isSubscribedToHub = true;
+        if (!ActiveEditors.ContainsKey(fieldName))
+            ActiveEditors[fieldName] = new();
 
-        HubConnection.On<string, Guid, string>("UserStartedEditing", async (userName, taskId, fieldName) =>
+        if (!ActiveEditors[fieldName].Contains(userName))
+            ActiveEditors[fieldName].Add(userName);
+
+        StateHasChanged();
+    }
+
+    public void ApplyUserStoppedEditing(string userName, Guid taskId, string fieldName)
+    {
+        if (Task is null || Task.Id != taskId)
+            return;
+
+        if (ActiveEditors.TryGetValue(fieldName, out var editors))
         {
-            if (Task is null || Task.Id != taskId) return;
+            editors.Remove(userName);
+            if (editors.Count == 0)
+                ActiveEditors.Remove(fieldName);
+        }
 
-            await InvokeAsync(() =>
-            {
-                if (!ActiveEditors.ContainsKey(fieldName))
-                    ActiveEditors[fieldName] = new();
-
-                if (!ActiveEditors[fieldName].Contains(userName))
-                    ActiveEditors[fieldName].Add(userName);
-
-                StateHasChanged();
-            });
-        });
-
-        HubConnection.On<string, Guid, string>("UserStoppedEditing", async (userName, taskId, fieldName) =>
-        {
-            if (Task is null || Task.Id != taskId) return;
-
-            await InvokeAsync(() =>
-            {
-                if (ActiveEditors.TryGetValue(fieldName, out var editors))
-                {
-                    editors.Remove(userName);
-                    if (editors.Count == 0)
-                        ActiveEditors.Remove(fieldName);
-                }
-                StateHasChanged();
-            });
-        });
+        StateHasChanged();
     }
 
     private async Task HandleFocusAsync(string fieldName)
     {
         _currentlyFocusedField = fieldName;
-        if (HubConnection is not null && Task is not null)
+        if (!IsCreateMode && Task is not null)
         {
-            await HubConnection.SendAsync("StartEditing", Task.BoardId, Task.Id, fieldName);
+            await OnFieldFocused.InvokeAsync(new TaskFieldEditArgs(Task.BoardId, Task.Id, fieldName));
         }
     }
 
     private async Task HandleBlurAsync(string fieldName)
     {
         _currentlyFocusedField = null;
-        if (HubConnection is not null && Task is not null)
+        if (!IsCreateMode && Task is not null)
         {
-            await HubConnection.SendAsync("StopEditing", Task.BoardId, Task.Id, fieldName);
+            await OnFieldBlurred.InvokeAsync(new TaskFieldEditArgs(Task.BoardId, Task.Id, fieldName));
         }
     }
 

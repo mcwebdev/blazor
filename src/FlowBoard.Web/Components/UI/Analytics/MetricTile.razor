@@ -1,0 +1,24 @@
+@namespace FlowBoard.Web.Components.UI.Analytics
+
+<a class="metric-tile @ToneClass" href="@Href" aria-label="@($"{Label}: {Value}. {Caption}. Open drill-down.")">
+    <span class="metric-tile-label">@Label</span>
+    <strong>@Value</strong>
+    <small>@Caption</small>
+    <span class="metric-tile-action">Drill down →</span>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Value { get; set; } = string.Empty;
+    [Parameter] public string Caption { get; set; } = string.Empty;
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public string Tone { get; set; } = "default";
+
+    private string ToneClass => Tone switch
+    {
+        "warning" => "tone-warning",
+        "success" => "tone-success",
+        "info" => "tone-info",
+        _ => "tone-default"
+    };
+}

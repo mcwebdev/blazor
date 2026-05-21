@@ -1,13 +1,50 @@
 @page "/analytics"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Infrastructure.Data
+@inject IDashboardService DashboardService
 
-<PageTitle>Analytics - FlowBoard</PageTitle>
+<PageTitle>Analytics · FlowBoard</PageTitle>
 
-<section class="placeholder-page">
-    <p class="eyebrow">Analytics route</p>
-    <h2>Drill-down analytics placeholder</h2>
-    <p>
-        This route will become the interactive analytics surface with status, workload,
-        overdue, and cycle-time cards that open filtered task evidence.
-    </p>
+<section class="analytics-rollup">
+    <header>
+        <p class="eyebrow">Analytics</p>
+        <h1>Workspace analytics</h1>
+        <p class="analytics-rollup-subtitle">
+            Drill-down analytics are scoped to a single board today. Pick a board to open its analytics surface
+            (overdue, workload, cycle time, burndown, and drill-down task lists).
+        </p>
+    </header>
+
+    @if (RecentBoard is null)
+    {
+        <article class="analytics-rollup-card">
+            <p>No boards in this workspace yet. Create one to see analytics.</p>
+        </article>
+    }
+    else
+    {
+        <article class="analytics-rollup-card">
+            <p class="eyebrow">Recent board</p>
+            <h2>@RecentBoard.Name</h2>
+            <p class="analytics-rollup-meta">@RecentBoard.Columns.Count columns · @RecentBoard.Columns.Sum(c => c.Tasks.Count) tasks tracked.</p>
+            <div class="analytics-rollup-actions">
+                <a class="primary-action" href="/boards/@RecentBoard.Id/analytics">Open board analytics →</a>
+                <a class="secondary-action" href="/boards/@RecentBoard.Id">Go to board</a>
+            </div>
+        </article>
+    }
 </section>
+
+@code {
+    private DashboardSummaryDto? Dashboard { get; set; }
+    private BoardDto? RecentBoard => Dashboard?.RecentBoard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Dashboard = await DashboardService.GetDashboardAsync(
+            SeedData.DemoUserId,
+            SeedData.WorkspaceId);
+    }
+}

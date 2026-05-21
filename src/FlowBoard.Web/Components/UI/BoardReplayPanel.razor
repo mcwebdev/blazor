@@ -24,6 +24,34 @@
             }
         </div>
 
+        @if (AllEvents.Count > 0)
+        {
+            <div class="replay-filter-row">
+                <input type="search"
+                       class="replay-search"
+                       placeholder="Filter timeline"
+                       @bind="SearchText"
+                       @bind:event="oninput"
+                       @bind:after="ApplyFiltersAsync" />
+
+                <select class="replay-filter-select" @bind="ActorFilter" @bind:after="ApplyFiltersAsync">
+                    <option value="">All actors</option>
+                    @foreach (var actor in ActorOptions)
+                    {
+                        <option value="@actor">@actor</option>
+                    }
+                </select>
+
+                <select class="replay-filter-select" @bind="EventTypeFilter" @bind:after="ApplyFiltersAsync">
+                    <option value="">All events</option>
+                    @foreach (var eventType in EventTypeOptions)
+                    {
+                        <option value="@eventType">@FormatEventType(eventType)</option>
+                    }
+                </select>
+            </div>
+        }
+
         <div class="replay-playback">
             <button type="button" class="replay-btn" @onclick="StepBackward" disabled="@(!CanStepBack)" title="Step back">
                 ⏮
@@ -59,6 +87,43 @@
     }
     else
     {
+        <div class="replay-board-preview" aria-label="Replay board projection">
+            <div class="replay-preview-header">
+                <div>
+                    <p class="eyebrow">Projection</p>
+                    <strong>@GetProjectionTitle()</strong>
+                </div>
+                <span>@SelectedEvent?.CreatedAtUtc.ToLocalTime().ToString("HH:mm:ss")</span>
+            </div>
+
+            <div class="replay-mini-board">
+                @foreach (var column in GetPreviewColumns())
+                {
+                    <section class="replay-mini-column @(column.IsTarget ? "target" : "") @(column.IsSource ? "source" : "")">
+                        <header>
+                            <span>@column.Name</span>
+                            @if (column.IsSource)
+                            {
+                                <small>from</small>
+                            }
+                            else if (column.IsTarget)
+                            {
+                                <small>to</small>
+                            }
+                        </header>
+
+                        @if (column.IsTarget && SelectedEvent is not null)
+                        {
+                            <article class="replay-mini-card">
+                                <span>@GetEventIcon(SelectedEvent.EventType)</span>
+                                <p>@GetEventSubject(SelectedEvent)</p>
+                            </article>
+                        }
+                    </section>
+                }
+            </div>
+        </div>
+
         <div class="replay-progress-bar">
             <div class="replay-progress-fill" style="width: @ProgressPercent%"></div>
             <span class="replay-progress-label">@(CurrentIndex + 1) / @Events.Count</span>
@@ -85,10 +150,19 @@
             <div class="replay-event-inspector">
                 <h4>Event inspector</h4>
                 <div class="inspector-meta">
-                    <span class="inspector-badge">@SelectedEvent.EventType</span>
+                    <span class="inspector-badge">@FormatEventType(SelectedEvent.EventType)</span>
                     <span>@SelectedEvent.ActorName</span>
                     <span>@SelectedEvent.CreatedAtUtc.ToString("g")</span>
                 </div>
+                @if (GetChangeChips(SelectedEvent).Count > 0)
+                {
+                    <div class="inspector-change-list">
+                        @foreach (var chip in GetChangeChips(SelectedEvent))
+                        {
+                            <span class="change-chip">@chip</span>
+                        }
+                    </div>
+                }
                 <div class="inspector-diff">
                     @if (!string.IsNullOrWhiteSpace(SelectedEvent.BeforeJson))
                     {
@@ -116,11 +190,16 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private IReadOnlyList<ReplayEventDto> Events = [];
+    private IReadOnlyList<ReplayEventDto> AllEvents = [];
+    private BoardDto? Board;
     private bool IsLoading;
     private int CurrentIndex;
     private bool IsPlaying;
     private int PlaybackSpeed = 1;
     private string SelectedRange = "30m";
+    private string SearchText = string.Empty;
+    private string ActorFilter = string.Empty;
+    private string EventTypeFilter = string.Empty;
     private System.Timers.Timer? _playTimer;
 
     private static readonly Dictionary<string, string> TimeRanges = new()
@@ -134,6 +213,18 @@
     private ReplayEventDto? SelectedEvent => Events.Count > 0 && CurrentIndex >= 0 && CurrentIndex < Events.Count
         ? Events[CurrentIndex]
         : null;
+
+    private IReadOnlyList<string> ActorOptions => AllEvents
+        .Select(e => e.ActorName)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private IReadOnlyList<string> EventTypeOptions => AllEvents
+        .Select(e => e.EventType)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     private bool CanStepBack => CurrentIndex > 0;
     private bool CanStepForward => CurrentIndex < Events.Count - 1;
@@ -168,10 +259,54 @@
             _ => DateTime.MinValue
         };
 
-        Events = await BoardService.GetReplayEventsAsync(BoardId, since);
+        Board ??= await BoardService.GetBoardAsync(BoardId);
+        AllEvents = await BoardService.GetReplayEventsAsync(BoardId, since);
+        ApplyFilters();
         CurrentIndex = 0;
         IsLoading = false;
         StateHasChanged();
+    }
+
+    private void ApplyFilters()
+    {
+        var query = AllEvents.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var search = SearchText.Trim();
+            query = query.Where(e =>
+                e.Summary.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || e.EventType.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || e.ActorName.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(ActorFilter))
+        {
+            query = query.Where(e => e.ActorName.Equals(ActorFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(EventTypeFilter))
+        {
+            query = query.Where(e => e.EventType.Equals(EventTypeFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        Events = query.ToList();
+
+        if (Events.Count == 0)
+        {
+            CurrentIndex = 0;
+            StopPlayback();
+        }
+        else if (CurrentIndex >= Events.Count)
+        {
+            CurrentIndex = Events.Count - 1;
+        }
+    }
+
+    private Task ApplyFiltersAsync()
+    {
+        ApplyFilters();
+        return Task.CompletedTask;
     }
 
     private void TogglePlayback()
@@ -256,6 +391,147 @@
         OnClose.InvokeAsync();
     }
 
+    private IReadOnlyList<PreviewColumn> GetPreviewColumns()
+    {
+        var boardColumns = Board?.Columns.OrderBy(c => c.SortOrder).ToList() ?? [];
+        if (boardColumns.Count == 0)
+            return [];
+
+        var beforeColumn = GetJsonValue(SelectedEvent?.BeforeJson, "ColumnName");
+        var afterColumn = GetJsonValue(SelectedEvent?.AfterJson, "ColumnName")
+            ?? GetJsonValue(SelectedEvent?.AfterJson, "Status");
+
+        if (string.IsNullOrWhiteSpace(beforeColumn) && string.IsNullOrWhiteSpace(afterColumn))
+        {
+            var fallback = boardColumns.FirstOrDefault(c => c.Tasks.Any(task =>
+                SelectedEvent is not null
+                && SelectedEvent.Summary.Contains(task.Title, StringComparison.OrdinalIgnoreCase)));
+            afterColumn = fallback?.Name ?? boardColumns.First().Name;
+        }
+
+        return boardColumns
+            .Select(column => new PreviewColumn(
+                column.Name,
+                MatchesColumn(column.Name, beforeColumn),
+                MatchesColumn(column.Name, afterColumn)))
+            .ToList();
+    }
+
+    private string GetProjectionTitle()
+    {
+        if (SelectedEvent is null)
+            return "No event selected";
+
+        var beforeColumn = GetJsonValue(SelectedEvent.BeforeJson, "ColumnName");
+        var afterColumn = GetJsonValue(SelectedEvent.AfterJson, "ColumnName");
+
+        return !string.IsNullOrWhiteSpace(beforeColumn) && !string.IsNullOrWhiteSpace(afterColumn)
+            ? $"{beforeColumn} to {afterColumn}"
+            : FormatEventType(SelectedEvent.EventType);
+    }
+
+    private static IReadOnlyList<string> GetChangeChips(ReplayEventDto evt)
+    {
+        var chips = new List<string>();
+        AddChangeChip(chips, "Title", evt.BeforeJson, evt.AfterJson);
+        AddChangeChip(chips, "Priority", evt.BeforeJson, evt.AfterJson);
+        AddChangeChip(chips, "Status", evt.BeforeJson, evt.AfterJson);
+        AddChangeChip(chips, "AssigneeUserId", evt.BeforeJson, evt.AfterJson, "Assignee");
+        AddChangeChip(chips, "DueDateUtc", evt.BeforeJson, evt.AfterJson, "Due date");
+        AddChangeChip(chips, "ColumnName", evt.BeforeJson, evt.AfterJson, "Column");
+
+        return chips;
+    }
+
+    private static void AddChangeChip(
+        ICollection<string> chips,
+        string propertyName,
+        string? beforeJson,
+        string? afterJson,
+        string? label = null)
+    {
+        var before = GetJsonValue(beforeJson, propertyName);
+        var after = GetJsonValue(afterJson, propertyName);
+
+        if (string.IsNullOrWhiteSpace(before) && string.IsNullOrWhiteSpace(after))
+            return;
+
+        if (string.Equals(before, after, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        chips.Add($"{label ?? propertyName}: {FormatValue(before)} -> {FormatValue(after)}");
+    }
+
+    private static string GetEventSubject(ReplayEventDto evt)
+    {
+        var title = GetJsonValue(evt.AfterJson, "Title")
+            ?? GetJsonValue(evt.BeforeJson, "Title");
+
+        if (!string.IsNullOrWhiteSpace(title))
+            return title;
+
+        var summary = evt.Summary.TrimEnd('.');
+        var verbs = new[] { "Created ", "Updated ", "Moved ", "Commented on ", "Added checklist item to " };
+        foreach (var verb in verbs)
+        {
+            if (summary.StartsWith(verb, StringComparison.OrdinalIgnoreCase))
+                return summary[verb.Length..];
+        }
+
+        return summary;
+    }
+
+    private static string FormatEventType(string eventType)
+    {
+        return string.Concat(eventType.Select((character, index) =>
+            index > 0 && char.IsUpper(character) ? $" {character}" : character.ToString()));
+    }
+
+    private static bool MatchesColumn(string columnName, string? eventColumn)
+    {
+        if (string.IsNullOrWhiteSpace(eventColumn))
+            return false;
+
+        return columnName.Equals(eventColumn, StringComparison.OrdinalIgnoreCase)
+            || columnName.Replace(" ", "", StringComparison.OrdinalIgnoreCase)
+                .Equals(eventColumn.Replace(" ", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "empty";
+
+        return value.Length > 28 ? $"{value[..25]}..." : value;
+    }
+
+    private static string? GetJsonValue(string? json, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty(propertyName, out var property))
+                return null;
+
+            return property.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.String => property.GetString(),
+                System.Text.Json.JsonValueKind.Number => property.GetRawText(),
+                System.Text.Json.JsonValueKind.True => "true",
+                System.Text.Json.JsonValueKind.False => "false",
+                System.Text.Json.JsonValueKind.Null => null,
+                _ => property.GetRawText()
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string GetEventIcon(string eventType) => eventType switch
     {
         "TaskCreated" => "✨",
@@ -284,4 +560,6 @@
             return json;
         }
     }
+
+    private sealed record PreviewColumn(string Name, bool IsSource, bool IsTarget);
 }

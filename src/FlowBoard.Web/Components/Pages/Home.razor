@@ -1,9 +1,16 @@
 @page "/"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@implements IDisposable
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Infrastructure.Data
+@using FlowBoard.Web.Components.UI
+@using FlowBoard.Web.Hubs
+@using FlowBoard.Web.Services
 @inject IDashboardService DashboardService
+@inject AppActionDispatcher AppActions
+@inject BoardUpdateNotifier BoardUpdates
 
 <PageTitle>FlowBoard</PageTitle>
 
@@ -99,16 +106,64 @@ else
             <button type="button" class="secondary-action">Replay last 30 minutes</button>
         </aside>
     </section>
+
+    @if (_dashboard.RecentBoard is not null)
+    {
+        <TaskDrawer @ref="_taskDrawer" OnTaskSaved="HandleTaskSavedAsync" />
+    }
 }
 
 @code {
     private DashboardSummaryDto? _dashboard;
+    private TaskDrawer? _taskDrawer;
+    private IDisposable? _newTaskRegistration;
+    private Guid? _activeCreateBoardId;
 
     protected override async Task OnInitializedAsync()
     {
-        // Using hardcoded SeedData IDs for now until login is implemented
+        await LoadDashboardAsync();
+
+        if (_dashboard?.RecentBoard is not null)
+        {
+            _newTaskRegistration = AppActions.RegisterNewTaskHandler(OpenCreateTaskDrawerAsync);
+        }
+    }
+
+    private async Task LoadDashboardAsync()
+    {
         _dashboard = await DashboardService.GetDashboardAsync(
-            SeedData.DemoUserId, 
+            SeedData.DemoUserId,
             SeedData.WorkspaceId);
+    }
+
+    private async Task OpenCreateTaskDrawerAsync()
+    {
+        if (_taskDrawer is null || _dashboard?.RecentBoard is null)
+            return;
+
+        _activeCreateBoardId = _dashboard.RecentBoard.Id;
+        await _taskDrawer.OpenForCreateAsync(_dashboard.RecentBoard.Id);
+    }
+
+    private async Task HandleTaskSavedAsync(TaskDrawerSavedArgs args)
+    {
+        var boardId = _activeCreateBoardId;
+        await LoadDashboardAsync();
+
+        if (boardId.HasValue)
+        {
+            await BoardUpdates.NotifyBoardChangedAsync(new BoardRealtimeEvent(
+                boardId.Value,
+                args.EventType,
+                args.Summary,
+                DateTime.UtcNow));
+        }
+
+        _activeCreateBoardId = null;
+    }
+
+    public void Dispose()
+    {
+        _newTaskRegistration?.Dispose();
     }
 }

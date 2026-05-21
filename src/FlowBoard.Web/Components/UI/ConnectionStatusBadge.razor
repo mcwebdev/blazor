@@ -1,4 +1,4 @@
-@using Microsoft.AspNetCore.SignalR.Client
+@using FlowBoard.Web.Models
 
 <div class="connection-badge @StateClass">
     <span class="connection-dot"></span>
@@ -7,19 +7,20 @@
 
 @code {
     [Parameter]
-    public HubConnectionState State { get; set; } = HubConnectionState.Disconnected;
+    public RealtimeConnectionState State { get; set; } = RealtimeConnectionState.Disconnected;
 
     private string StateClass => State switch
     {
-        HubConnectionState.Connected => "connected",
-        HubConnectionState.Reconnecting => "reconnecting",
+        RealtimeConnectionState.Connected => "connected",
+        RealtimeConnectionState.Reconnecting => "reconnecting",
         _ => "disconnected"
     };
 
     private string Label => State switch
     {
-        HubConnectionState.Connected => "Live",
-        HubConnectionState.Reconnecting => "Reconnecting…",
+        RealtimeConnectionState.Connected => "Live",
+        RealtimeConnectionState.Connecting => "Connecting",
+        RealtimeConnectionState.Reconnecting => "Reconnecting…",
         _ => "Offline"
     };
 }
