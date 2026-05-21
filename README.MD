@@ -1,6 +1,6 @@
 # Smart Task Manager — Full-Stack Blazor Technical Build Spec
 
-Author: OpenAI Codex
+## sAuthor: OpenAI Codex
 
 ## 1. Project Summary
 
