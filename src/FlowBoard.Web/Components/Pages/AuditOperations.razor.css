@@ -1,0 +1,163 @@
+.audit-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.audit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+
+@media (max-width: 980px) {
+    .audit-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.audit-card {
+    background: #ffffff;
+    border: 1px solid #e6ebef;
+    border-radius: 12px;
+    padding: 1rem 1.1rem 1.15rem 1.1rem;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+.audit-card > header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.85rem;
+}
+
+.audit-card > header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.audit-count {
+    font-size: 0.78rem;
+    color: #6a7480;
+    font-weight: 600;
+}
+
+.audit-filter-row {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr auto;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+}
+
+@media (max-width: 720px) {
+    .audit-filter-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.audit-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+::deep .audit-grid {
+    width: 100%;
+}
+
+::deep .audit-grid th {
+    text-align: left;
+    background: #f5f7fa;
+    color: #45525d;
+    font-weight: 700;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.5rem 0.65rem;
+    border-bottom: 1px solid #e6ebef;
+}
+
+::deep .audit-grid td {
+    padding: 0.55rem 0.65rem;
+    border-bottom: 1px solid #f0f3f6;
+    vertical-align: top;
+}
+
+::deep .audit-grid tr:hover td {
+    background: #f9fbfc;
+}
+
+.audit-idem {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 0.74rem;
+    background: #f3f5f8;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #45525d;
+}
+
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.audit-table th {
+    text-align: left;
+    background: #f5f7fa;
+    color: #45525d;
+    font-weight: 700;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.5rem 0.65rem;
+    border-bottom: 1px solid #e6ebef;
+}
+
+.audit-table td {
+    padding: 0.55rem 0.65rem;
+    border-bottom: 1px solid #f0f3f6;
+}
+
+.audit-empty {
+    color: #6a7480;
+    font-size: 0.88rem;
+    margin: 0;
+}
+
+.audit-over {
+    color: #c54028;
+    font-weight: 700;
+}
+
+.role-pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.role-pill.role-owner {
+    background: #fff1d6;
+    color: #8a5b00;
+}
+
+.role-pill.role-admin {
+    background: #e6efff;
+    color: #1b4d99;
+}
+
+.role-pill.role-member {
+    background: #e9f3ec;
+    color: #1e6c2f;
+}
+
+.role-pill.role-viewer {
+    background: #eef0f3;
+    color: #4a5560;
+}

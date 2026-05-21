@@ -1,0 +1,109 @@
+.flag-stack {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.flag-card {
+    background: #ffffff;
+    border: 1px solid #e6ebef;
+    border-radius: 12px;
+    padding: 1rem 1.1rem 1rem 1.1rem;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.flag-card.is-enabled {
+    border-color: #c6e6cf;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+.flag-card.is-disabled {
+    background: #f8fafb;
+}
+
+.flag-card > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.flag-card h3 {
+    margin: 0 0 4px 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.flag-key {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 0.72rem;
+    background: #f3f5f8;
+    padding: 1px 7px;
+    border-radius: 4px;
+    color: #6a7480;
+}
+
+.flag-description {
+    margin: 0.6rem 0 0.8rem 0;
+    font-size: 0.86rem;
+    color: #4a5560;
+    line-height: 1.45;
+}
+
+.flag-meta {
+    display: flex;
+    gap: 0.65rem;
+    color: #8c959f;
+    font-size: 0.74rem;
+}
+
+/* ── Toggle switch ─────────────────────────────────────────── */
+.flag-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.flag-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.flag-slider {
+    position: absolute;
+    inset: 0;
+    background: #cdd5dc;
+    border-radius: 12px;
+    transition: background 160ms ease;
+}
+
+.flag-slider::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
+    transition: transform 160ms ease;
+}
+
+.flag-toggle input:checked + .flag-slider {
+    background: #2c9d56;
+}
+
+.flag-toggle input:checked + .flag-slider::before {
+    transform: translateX(20px);
+}
+
+.flag-toggle input:focus-visible + .flag-slider {
+    outline: 2px solid #276ef1;
+    outline-offset: 2px;
+}

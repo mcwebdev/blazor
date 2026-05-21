@@ -1041,6 +1041,195 @@ h1:focus {
     background: #e74c3c;
 }
 
+.connection-badge.sync-pending {
+    background: rgba(52, 152, 219, 0.12);
+    color: #2078b8;
+    animation: editIndicatorPulse 1.5s ease-in-out infinite;
+}
+
+.connection-badge.sync-pending .connection-dot {
+    background: #2078b8;
+}
+
+.connection-pending-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    margin-left: 4px;
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.12);
+    color: inherit;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* ── Top-bar utility / action buttons (shared across components) ── */
+.utility-button,
+.primary-action,
+.secondary-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.utility-button {
+    min-width: 52px;
+    padding: 0 0.75rem;
+    background: #e6ebef;
+    color: #172026;
+}
+
+.utility-button:hover {
+    background: #d6dee4;
+}
+
+.utility-button:focus-visible {
+    outline: 2px solid #276ef1;
+    outline-offset: 2px;
+}
+
+.primary-action {
+    padding: 0 1rem;
+    background: #276ef1;
+    color: #ffffff;
+}
+
+.primary-action:hover {
+    background: #205fda;
+}
+
+.secondary-action {
+    padding: 0 1rem;
+    background: #172026;
+    color: #ffffff;
+}
+
+.secondary-action:hover {
+    background: #2a3640;
+}
+
+/* Outline variant used by the board header replay toggle, drawer label
+   chips, and other in-page secondary buttons. */
+.outline-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 0.85rem;
+    border-radius: 8px;
+    border: 1px solid #d4dbe1;
+    background: #ffffff;
+    color: #172026;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.outline-action:hover {
+    background: #f2f5f8;
+    border-color: #b9c3cb;
+}
+
+.outline-action.is-active {
+    background: #172026;
+    color: #ffffff;
+    border-color: #172026;
+}
+
+/* ── Sync result toast ── */
+.sync-toast-host {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 1100;
+    pointer-events: none;
+}
+
+.sync-toast {
+    background: #ffffff;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-left: 3px solid #27ae60;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    border-radius: 8px;
+    padding: 0.6rem 0.85rem;
+    min-width: 240px;
+    max-width: 360px;
+    font-size: 0.82rem;
+    color: #2c3e50;
+    pointer-events: auto;
+    animation: syncToastIn 220ms ease-out;
+}
+
+.sync-toast.failure {
+    border-left-color: #e74c3c;
+}
+
+.sync-toast .sync-toast-title {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.sync-toast .sync-toast-body {
+    color: #5d6b7a;
+    font-size: 0.78rem;
+}
+
+@keyframes syncToastIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Draft restore prompt inside TaskDrawer ── */
+.draft-restore-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    background: rgba(52, 152, 219, 0.08);
+    border: 1px solid rgba(52, 152, 219, 0.25);
+    color: #1f5f8b;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    margin-bottom: 0.85rem;
+}
+
+.draft-restore-banner button {
+    border: none;
+    background: transparent;
+    color: #1f5f8b;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+}
+
+.draft-restore-banner button:hover {
+    background: rgba(52, 152, 219, 0.18);
+}
+
+.draft-restore-banner button.draft-discard {
+    color: #7a8896;
+    font-weight: 500;
+}
+
 /* ── Board Replay Panel ── */
 .board-replay-panel {
     position: fixed;

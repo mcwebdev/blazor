@@ -2,8 +2,10 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @rendermode InteractiveServer
 @implements IAsyncDisposable
+@using System.Text.Json
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
 @using FlowBoard.Infrastructure.Data
 @using FlowBoard.Web.Hubs
 @using FlowBoard.Web.Services
@@ -12,6 +14,8 @@
 @inject IBoardService BoardService
 @inject BoardUpdateNotifier BoardUpdates
 @inject AppActionDispatcher AppActions
+@inject ICurrentUserService CurrentUser
+@inject IAuditQueryService AuditService
 @inject ILogger<Board> Logger
 @inject IJSRuntime JS
 
@@ -47,11 +51,11 @@ else
         </div>
         <div class="board-header-actions">
             <PresenceAvatarStack Users="ActiveUsers" />
-            <ConnectionStatusBadge State="ConnectionState" />
-            <button type="button" class="btn btn-outline-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" @onclick="ToggleReplay">
+            <ConnectionStatusBadge State="ConnectionState" PendingCount="PendingActionCount" />
+            <button type="button" class="outline-action @(ShowReplayPanel ? "is-active" : null)" @onclick="ToggleReplay">
                 @(ShowReplayPanel ? "Close Replay" : "⏱ Replay")
             </button>
-            <button type="button" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Board Settings</button>
+            <button type="button" class="primary-action">Board Settings</button>
         </div>
     </div>
 
@@ -110,8 +114,29 @@ else
         </aside>
     </section>
 
-    <TaskDrawer @ref="taskDrawer" OnTaskSaved="HandleTaskSavedAsync" OnFieldFocused="HandleTaskFieldFocusedAsync" OnFieldBlurred="HandleTaskFieldBlurredAsync" />
+    <TaskDrawer @ref="taskDrawer"
+                BoardId="BoardData.Id"
+                OnTaskSaved="HandleTaskSavedAsync"
+                OnFieldFocused="HandleTaskFieldFocusedAsync"
+                OnFieldBlurred="HandleTaskFieldBlurredAsync"
+                OnDraftQueued="HandleDraftQueuedAsync" />
     <BoardReplayPanel BoardId="BoardData.Id" IsOpen="ShowReplayPanel" OnClose="() => ShowReplayPanel = false" />
+
+    @if (SyncToasts.Count > 0)
+    {
+        <div class="sync-toast-host" role="status" aria-live="polite">
+            @foreach (var toast in SyncToasts)
+            {
+                <div class="sync-toast @(toast.IsFailure ? "failure" : null)" @key="toast.Id">
+                    <span class="sync-toast-title">@toast.Title</span>
+                    @if (!string.IsNullOrEmpty(toast.Body))
+                    {
+                        <span class="sync-toast-body">@toast.Body</span>
+                    }
+                </div>
+            }
+        </div>
+    }
 }
 
 @code {
@@ -130,9 +155,14 @@ else
     private RealtimeConnectionState ConnectionState = RealtimeConnectionState.Disconnected;
     private bool ShowReplayPanel;
     private IJSObjectReference? realtimeModule;
+    private IJSObjectReference? offlineModule;
     private DotNetObjectReference<Board>? boardReference;
     private bool RealtimeInitialized;
     private IDisposable? boardReplayRegistration;
+    private int PendingActionCount;
+    private readonly List<SyncToastEntry> SyncToasts = [];
+
+    private sealed record SyncToastEntry(Guid Id, string Title, string? Body, bool IsFailure);
 
     protected override async Task OnInitializedAsync()
     {
@@ -163,6 +193,9 @@ else
         try
         {
             boardReference = DotNetObjectReference.Create(this);
+            offlineModule = await JS.InvokeAsync<IJSObjectReference>("import", "/js/offlineDrafts.js");
+            PendingActionCount = await offlineModule.InvokeAsync<int>("pendingCount", BoardData.Id);
+
             realtimeModule = await JS.InvokeAsync<IJSObjectReference>("import", "/js/boardRealtime.js");
             await realtimeModule.InvokeVoidAsync("connect", BoardData.Id, boardReference);
         }
@@ -171,6 +204,73 @@ else
             Logger.LogWarning(ex, "Board realtime connection failed for board {BoardId}.", BoardData?.Id);
             ConnectionState = RealtimeConnectionState.Disconnected;
         }
+    }
+
+    private async Task DrainPendingQueueAsync()
+    {
+        if (offlineModule is null || boardReference is null || BoardData is null)
+            return;
+
+        if (PendingActionCount == 0)
+            return;
+
+        ConnectionState = RealtimeConnectionState.SyncPending;
+        StateHasChanged();
+
+        try
+        {
+            var result = await offlineModule.InvokeAsync<JsonElement>(
+                "drainQueue", BoardData.Id, boardReference, nameof(ReplayQueuedAction));
+
+            var succeeded = result.TryGetProperty("succeeded", out var s) ? s.GetInt32() : 0;
+            var failed = result.TryGetProperty("failed", out var f) ? f.GetInt32() : 0;
+
+            PendingActionCount = await offlineModule.InvokeAsync<int>("pendingCount", BoardData.Id);
+
+            if (succeeded > 0)
+            {
+                AddSyncToast(
+                    $"Synced {succeeded} pending action{(succeeded == 1 ? "" : "s")}.",
+                    body: null,
+                    isFailure: false);
+            }
+
+            if (failed > 0)
+            {
+                AddSyncToast(
+                    $"{failed} action{(failed == 1 ? "" : "s")} could not sync.",
+                    body: "We kept the draft so you can retry.",
+                    isFailure: true);
+            }
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Pending action drain failed for board {BoardId}.", BoardData?.Id);
+        }
+        finally
+        {
+            ConnectionState = PendingActionCount > 0
+                ? RealtimeConnectionState.SyncPending
+                : RealtimeConnectionState.Connected;
+            StateHasChanged();
+        }
+    }
+
+    private void AddSyncToast(string title, string? body, bool isFailure)
+    {
+        var entry = new SyncToastEntry(Guid.NewGuid(), title, body, isFailure);
+        SyncToasts.Add(entry);
+        _ = ExpireToastAsync(entry);
+    }
+
+    private async Task ExpireToastAsync(SyncToastEntry entry)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(entry.IsFailure ? 8 : 4));
+        await InvokeAsync(() =>
+        {
+            SyncToasts.RemoveAll(t => t.Id == entry.Id);
+            StateHasChanged();
+        });
     }
 
     [JSInvokable]
@@ -197,15 +297,132 @@ else
     }
 
     [JSInvokable]
-    public Task HandleConnectionStateChanged(string state)
+    public async Task HandleConnectionStateChanged(string state)
     {
-        return InvokeAsync(() =>
+        var newState = Enum.TryParse<RealtimeConnectionState>(state, ignoreCase: true, out var parsed)
+            ? parsed
+            : RealtimeConnectionState.Disconnected;
+
+        await InvokeAsync(() =>
         {
-            ConnectionState = Enum.TryParse<RealtimeConnectionState>(state, ignoreCase: true, out var parsed)
-                ? parsed
-                : RealtimeConnectionState.Disconnected;
+            ConnectionState = newState;
             StateHasChanged();
         });
+
+        // When the socket comes back, drain any actions the user queued while
+        // offline. The drain itself flips the badge to SyncPending and back to
+        // Connected once the queue is empty.
+        if (newState == RealtimeConnectionState.Connected && PendingActionCount > 0)
+        {
+            await DrainPendingQueueAsync();
+        }
+    }
+
+    [JSInvokable]
+    public async Task<bool> ReplayQueuedAction(string kind, string clientRequestId, JsonElement payload)
+    {
+        if (BoardData is null)
+            return false;
+
+        try
+        {
+            switch (kind)
+            {
+                case "create-task":
+                    var dto = new CreateTaskDto
+                    {
+                        BoardId = BoardData.Id,
+                        Title = payload.TryGetProperty("title", out var t) ? t.GetString() ?? string.Empty : string.Empty,
+                        Description = payload.TryGetProperty("description", out var d) ? d.GetString() : null,
+                        Priority = payload.TryGetProperty("priority", out var p) && Enum.TryParse<TaskPriority>(p.GetString(), out var pri)
+                            ? pri : TaskPriority.Medium,
+                        Status = payload.TryGetProperty("status", out var st) && Enum.TryParse<TaskItemStatus>(st.GetString(), out var status)
+                            ? status : TaskItemStatus.Open,
+                        AssigneeUserId = payload.TryGetProperty("assigneeUserId", out var a) ? a.GetString() : null,
+                        DueDateUtc = payload.TryGetProperty("dueDateUtc", out var du) && du.ValueKind == JsonValueKind.String
+                            && DateTime.TryParse(du.GetString(), out var due) ? due : null,
+                        ClientRequestId = clientRequestId
+                    };
+
+                    if (string.IsNullOrWhiteSpace(dto.Title))
+                        return false;
+
+                    await BoardService.CreateTaskAsync(dto);
+                    await InvokeAsync(LoadBoardDataAsync);
+                    await NotifyBoardChangedAsync("TaskCreated", $"Created {dto.Title}.");
+                    return true;
+
+                case "add-comment":
+                    if (!payload.TryGetProperty("taskId", out var ti) || !Guid.TryParse(ti.GetString(), out var taskId))
+                        return false;
+
+                    var body = payload.TryGetProperty("body", out var b) ? b.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(body))
+                        return false;
+
+                    var actorId = CurrentUser.UserId;
+                    if (string.IsNullOrEmpty(actorId))
+                        return false;
+
+                    await BoardService.AddCommentAsync(taskId, body, actorId, clientRequestId);
+                    return true;
+
+                default:
+                    Logger.LogWarning("Unknown queued action kind '{Kind}'.", kind);
+                    return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Replay of queued action {Kind}/{RequestId} failed.", kind, clientRequestId);
+
+            // Surface the failure to the admin audit view. We use the
+            // workspace owning the current board and tag the row with the
+            // client request id as the correlation id so operators can
+            // tie it back to the localStorage queue entry. Swallow any
+            // secondary failure here — admin logging must never break
+            // the user-facing replay path.
+            try
+            {
+                if (BoardData is not null && CurrentUser.UserId is not null)
+                {
+                    var workspaceId = await BoardService.GetWorkspaceIdForBoardAsync(BoardData.Id);
+                    Guid? correlation = Guid.TryParse(clientRequestId, out var parsedCorrelation)
+                        ? parsedCorrelation
+                        : null;
+
+                    await AuditService.RecordFailedCommandAsync(
+                        workspaceId,
+                        CurrentUser.UserId,
+                        kind,
+                        payload.GetRawText(),
+                        ex.Message,
+                        correlation);
+                }
+            }
+            catch (Exception logEx)
+            {
+                Logger.LogDebug(logEx, "Could not persist FailedCommand row for {Kind}.", kind);
+            }
+
+            return false;
+        }
+    }
+
+    private async Task HandleDraftQueuedAsync(int pendingCount)
+    {
+        PendingActionCount = pendingCount;
+
+        if (ConnectionState == RealtimeConnectionState.Connected)
+        {
+            // We just enqueued while connected (rare: server-side failure
+            // path). Try to drain right away.
+            await DrainPendingQueueAsync();
+        }
+        else
+        {
+            StateHasChanged();
+        }
     }
 
     [JSInvokable]
@@ -433,8 +650,18 @@ else
             }
         }
 
+        if (offlineModule is not null)
+        {
+            try
+            {
+                await offlineModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { /* circuit gone, nothing to release */ }
+            catch (JSException) { /* module already disposed */ }
+        }
+
         boardReference?.Dispose();
-        
+
         newTaskRegistration?.Dispose();
         boardReplayRegistration?.Dispose();
     }

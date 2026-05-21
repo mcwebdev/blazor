@@ -10,6 +10,7 @@ public interface IBoardService
     Task<IReadOnlyList<BoardMemberDto>> GetBoardMembersAsync(Guid boardId);
     Task<bool> UserCanAccessBoardAsync(Guid boardId, string userId);
     Task<bool> TaskBelongsToBoardAsync(Guid boardId, Guid taskId);
+    Task<Guid> GetWorkspaceIdForBoardAsync(Guid boardId);
     Task<TaskDetailDto?> GetTaskAsync(Guid taskId);
     Task<TaskDetailDto> CreateTaskAsync(CreateTaskDto dto);
     Task UpdateTaskAsync(TaskDetailDto dto);
@@ -20,7 +21,7 @@ public interface IBoardService
     // Checklists & Comments
     Task<TaskChecklistItemDto> AddChecklistItemAsync(Guid taskId, string text, string actorUserId);
     Task ToggleChecklistItemAsync(Guid itemId, bool isComplete, string actorUserId);
-    Task<TaskCommentDto> AddCommentAsync(Guid taskId, string body, string actorUserId);
+    Task<TaskCommentDto> AddCommentAsync(Guid taskId, string body, string actorUserId, string? clientRequestId = null);
 
     // Labels
     Task<IReadOnlyList<TaskLabelDto>> GetLabelsForBoardAsync(Guid boardId);

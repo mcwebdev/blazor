@@ -30,11 +30,11 @@ blazor  -> blazor-5c3d4
 
 ## Current Status
 
-Current phase: Phase 6 - Analytics depth & drill-down in progress.
+Current phase: Phase 6 Part 2 — Admin & Audit Operations (spec §4.16) shipped MVP. Next signature item is Phase 7 in-app notifications (§4.8).
 
-The foundational backend is built and the demo board now supports live moves, edits, and task creation from the app shell. Real-time presence indicators and the browser-side SignalR hub integration are operational. Field-level editing indicators and conflict resolution are implemented. The board now has a full analytics surface with status/priority mix, workload bars, 14-day burndown, lead-time and cycle-time histograms, and a drill-down route with URL-synced filters and CSV export.
+The foundational backend is built and the demo board now supports live moves, edits, and task creation from the app shell. Real-time presence indicators and the browser-side SignalR hub integration are operational. Field-level editing indicators and conflict resolution are implemented. The board has a full analytics surface with status/priority mix, workload bars, 14-day burndown, lead-time and cycle-time histograms, and a drill-down route with URL-synced filters and CSV export. The board persists unsaved task drafts to localStorage, queues create-task actions when the server is unreachable, replays them on SignalR reconnect with idempotency-key dedup, and surfaces a connection badge with four states. A new admin surface (`/settings/audit`, `/settings/features`) provides QuickGrid-paged audit log, member/role matrix, WIP-limit breach report, failed-command grid with CSV export, and four feature-flag toggles seeded on first use.
 
-Estimated completion: about 78% of the full technical spec. The remaining high-impact work is admin/audit operations (QuickGrid, feature flags, failed-command diagnostics), notifications, offline drafts/connection resilience, deployment hardening, tests, and final demo polish.
+Estimated completion: about 90% of the full technical spec. The remaining high-impact work is in-app notifications (bell + assignment/mention/overdue), workspace-level analytics rollup, deployment hardening, tests, and final demo polish.
 
 Completed:
 
@@ -130,7 +130,60 @@ Google Cloud:
 
 ## Next Steps
 
-Next recommended task: Phase 6 part 2 — admin/audit operations (QuickGrid audit log, feature-flag toggles, failed-command diagnostics) and/or Phase 7 notifications + offline drafts. Also consider wiring the workspace-level `/analytics` rollup into a true aggregate (today it points to the most recent board).
+Next recommended task: Phase 7 — in-app notifications (§4.8) with assignment, mention, and overdue triggers; then a true workspace-level analytics rollup. Deferred polish: queue move/checklist mutations with a Version-refresh strategy and add unit tests for the idempotency short-circuit.
+
+## Phase 6 Part 2: Admin & Audit Operations (Completed MVP)
+
+- [x] Added `Microsoft.AspNetCore.Components.QuickGrid` (10.0.*) package reference plus `@using Microsoft.AspNetCore.Components.QuickGrid` and `@using Microsoft.AspNetCore.Authorization` in `_Imports.razor`.
+- [x] New DTOs in `AdminDtos.cs`: `AuditLogRowDto`, `AuditLogPageDto`, `AuditLogFilterDto`, `WorkspaceMemberRowDto`, `FeatureFlagRowDto`, `FailedCommandRowDto`, `WipBreachRowDto`.
+- [x] New service `IAuditQueryService` / `AuditQueryService` covering: paged audit log (used by QuickGrid's `ItemsProvider`), workspace members, current WIP-limit breaches (single SQL roundtrip via a join + correlated count), failed commands, and a write path (`RecordFailedCommandAsync`).
+- [x] New service `IFeatureFlagService` / `FeatureFlagService` with seed-on-first-read for four canonical flags (`analytics`, `notifications`, `replay`, `experimental-ui`). `SetFlagAsync` no-ops when the value is unchanged; `IsEnabledAsync` falls back to the canonical default for unknown keys.
+- [x] Added `GetUserRoleAsync` to `IAuditQueryService` for the page-level Owner/Admin gate. `IBoardService.GetWorkspaceIdForBoardAsync` was promoted from private so `Board.razor` can record failed commands during the reconnect drain.
+- [x] New page `/settings/audit` (also `/settings/workspace/{WorkspaceId:guid}/audit`) renders a QuickGrid audit log with text/event-type/actor filters, a member-role matrix with role pills, a WIP-breach table, a failed-commands grid, and a CSV export anchor over the first 1,000 matching rows.
+- [x] New page `/settings/features` (also `/settings/workspace/{WorkspaceId:guid}/features`) renders a card grid of toggle switches with display name, description, last-updated metadata, and per-flag enabled/disabled visual state.
+- [x] `Board.razor` now persists a `FailedCommand` row via `IAuditQueryService.RecordFailedCommandAsync` when `ReplayQueuedAction` catches an exception. The `clientRequestId` is set as the correlation id; the failure is swallowed if the audit write itself fails so the user-facing replay path stays intact.
+- [x] Sidebar `Operations` group gained two `NavLink` rows for Audit and Feature flags. Command palette gained `Open audit log` and `Open feature flags`.
+- [x] Page styles: `AuditOperations.razor.css` (audit cards, filter row, QuickGrid theming via `::deep`, role pills, WIP-over color); `FeatureFlags.razor.css` (toggle slider, card states).
+- [x] Both routes self-gate on `WorkspaceRole.Owner` or `.Admin` and render a "Forbidden" placeholder when the current user doesn't qualify.
+- [x] Build verified: `dotnet build FlowBoard.sln -c Debug` → 0 warnings, 0 errors.
+- [x] Runtime verified at `http://localhost:5275`:
+  - `GET /settings/audit` unauth → 302 to login (expected).
+  - `GET /settings/features` unauth → 302 to login (expected).
+  - `dotnet watch` rebuild on save completed cleanly (no errors in watch log).
+
+Known follow-ups for Phase 6 part 2:
+
+- Add a date-range filter to the audit grid (the filter DTO already supports `FromUtc`/`ToUtc`; the page UI just needs two date inputs).
+- Render an actual "export ALL filtered rows" path through a streaming server endpoint instead of the 1,000-row data URL.
+- Member-role matrix is read-only today; spec §4.16 hints at edit-in-place; defer until a real invite flow exists.
+- Backfill an admin-only seed user with `WorkspaceRole.Admin` to exercise the role guard separately from the Owner path.
+
+## Phase 7 Part 1: Connection Resilience & Offline Drafts (Completed MVP)
+
+- [x] Extended `RealtimeConnectionState` with `SyncPending` to give the badge the full set of states required by spec §4.15 (Live / Connecting / Reconnecting / Sync pending / Offline).
+- [x] `ConnectionStatusBadge.razor` accepts a `PendingCount` parameter and renders an inline pill when actions are queued; tooltip text explains each state.
+- [x] Added `.connection-badge.sync-pending` styling plus a reusable `.sync-toast-host` toast surface and a `.draft-restore-banner` in `app.css`.
+- [x] Added `wwwroot/js/offlineDrafts.js`: ES module that owns task draft autosave/restore and the per-board pending-action queue in localStorage. Generates UUID idempotency keys, exposes `enqueueAction`, `drainQueue`, `pendingCount`, `loadDraft`, `saveDraft`, `clearDraft`.
+- [x] `Board.razor` imports the module on first render, reads the initial pending count, and triggers `DrainPendingQueueAsync` whenever SignalR reports `Connected`. The drain method flips the badge to `SyncPending` while it works, then back to `Connected`.
+- [x] Added `[JSInvokable] ReplayQueuedAction(string kind, string clientRequestId, JsonElement payload)` to `Board.razor` that hands queued create-task and add-comment actions back to `IBoardService`. Failed items remain in the queue with an incremented attempt counter and an error reason.
+- [x] Sync result toast host renders inside `Board.razor` and auto-expires entries after 4s (success) or 8s (failure).
+- [x] `TaskDrawer.razor` autosaves create-mode field changes (Title + Description keystrokes) to `flowboard:draft:<boardId>` and shows a non-destructive "Restore draft?" banner the next time the drawer opens. On save success the draft is cleared.
+- [x] `TaskDrawer.razor` falls back to `enqueueAction` when `CreateTaskAsync` throws a non-validation, non-concurrency exception (treated as transient connectivity loss). Edit/update paths are intentionally not queued because their `Version` token would be stale on replay.
+- [x] `CreateTaskDto` gained `ClientRequestId`. `IBoardService.AddCommentAsync` gained an optional `clientRequestId`. Both flow into `ActivityLog.IdempotencyKey` via `RecordActivityAsync`.
+- [x] `BoardService.CreateTaskAsync` and `AddCommentAsync` now check `ActivityLog.IdempotencyKey` (scoped to actor + event type per spec §15) and short-circuit by returning the previously-created entity instead of inserting a duplicate. The `IdempotencyKey` column already existed and was indexed; no migration required.
+- [x] Build verified: `dotnet build FlowBoard.sln -c Debug` and `-c Release` → 0 warnings, 0 errors.
+- [x] Runtime verified at `http://localhost:5275`:
+  - `GET /health` → 200.
+  - `GET /js/offlineDrafts.js` → 200 (5,672 bytes).
+  - `GET /js/boardRealtime.js` → 200 (regression, 3,533 bytes).
+  - `GET /boards/demo` unauthenticated → 302 to login (expected).
+
+Known follow-ups for Phase 7 part 1:
+
+- Queue move/checklist/comment-on-other-tab actions as well, with a per-kind replay strategy that handles `Version` invalidation.
+- Persist failed-command entries through `FailedCommand` table once the admin/audit screen exists, so operators can inspect them.
+- Add unit tests for `BoardService` idempotency short-circuit on duplicate `ClientRequestId`.
+- Wire the sidebar `SidebarStatusChips` to the same realtime connection state for the at-a-glance environment view promised by spec §4.15 bullet 2.
 
 ## Phase 6 Part 1: Analytics Surface & Drill-Down (Completed MVP)
 
@@ -430,3 +483,47 @@ Next recommended task: Move to Phase 4.
   - `/analytics` returned HTTP 200 with a link into the seeded board Guid.
 
 Next recommended task: Phase 6 part 2 — admin/audit operations (QuickGrid audit log, feature-flag toggles, failed-command diagnostics) or Phase 7 notifications + offline drafts. Optional: build `IAnalyticsService` unit tests and a true workspace-level rollup before moving to Phase 7.
+
+### 2026-05-20 - Phase 7 Part 1 Connection Resilience & Offline Drafts
+
+- Followed the spec's prioritized signature list (§17, §22): with replay, command palette, and drill-down done, the next signature item was connection resilience (§4.15).
+- Extended `RealtimeConnectionState` to include `SyncPending` and refactored `ConnectionStatusBadge.razor` to render four states with a contextual tooltip and an inline pending-action count pill. Added matching `app.css` styles plus a reusable `.sync-toast-host` and `.draft-restore-banner` surface.
+- Added `wwwroot/js/offlineDrafts.js` (ES module): per-board localStorage keys for both task drafts (`flowboard:draft:<boardId>`) and the pending-action queue (`flowboard:queue:<boardId>`). Exposes `saveDraft`, `loadDraft`, `clearDraft`, `enqueueAction`, `drainQueue`, `pendingCount`. Generates per-action UUID idempotency keys via `crypto.randomUUID` with a fallback.
+- Wired the module into `Board.razor`. On reconnect (`HandleConnectionStateChanged` → `Connected` with a non-zero queue) the page flips to `SyncPending` and drains via a new `[JSInvokable] ReplayQueuedAction(string kind, string clientRequestId, JsonElement payload)` that dispatches to `BoardService.CreateTaskAsync` or `BoardService.AddCommentAsync`. Failed items remain queued with attempt counter + last error.
+- Added a small toast surface inside `Board.razor` (`SyncToasts` list, `AddSyncToast` helper, `ExpireToastAsync` auto-dismiss) that fires after a drain completes with success/failure counts.
+- `TaskDrawer.razor` now:
+  - Autosaves create-mode field changes to localStorage on every keystroke through `HandleDraftFieldChanged`.
+  - Surfaces a non-destructive "Restore draft?" banner the next time the drawer opens with a draft saved for that board.
+  - Mints a fresh `ClientRequestId` on every create attempt and falls back to `enqueueAction` if the server call throws a transient exception (treated as a connectivity loss). Validation errors and `DbUpdateConcurrencyException` still surface inline.
+  - Edit/update paths intentionally are NOT queued (the stale `Version` token makes safe replay nontrivial).
+- Wired idempotency end-to-end: `CreateTaskDto.ClientRequestId`, `IBoardService.AddCommentAsync(..., string? clientRequestId = null)`, and a new `RecordActivityAsync(..., idempotencyKey)` overload that writes the key into the existing `ActivityLog.IdempotencyKey` column. `BoardService.CreateTaskAsync` and `AddCommentAsync` now short-circuit on a prior `(actor, eventType, idempotencyKey)` row and return the prior entity instead of inserting a duplicate.
+- Verified `dotnet build FlowBoard.sln -c Debug` → 0 warnings, 0 errors.
+- Verified `dotnet build FlowBoard.sln -c Release` → 0 warnings, 0 errors.
+- Runtime smoke (`dotnet run --no-build --project src/FlowBoard.Web/FlowBoard.Web.csproj --urls http://localhost:5275`):
+  - `GET /health` → 200.
+  - `GET /js/offlineDrafts.js` → 200 (5,672 bytes).
+  - `GET /js/boardRealtime.js` → 200 (3,533 bytes, regression).
+  - `GET /boards/demo` unauthenticated → 302 to `/Account/Login` (expected guard).
+
+Next recommended task: Phase 6 part 2 — admin/audit operations (QuickGrid audit log, role matrix, feature flags, failed-command grid). Then notifications (§4.8) and the workspace-level analytics rollup. Optional cleanups: queue move/update mutations with a Version-refresh strategy, surface `FailedCommand` rows from the audit grid, add unit tests for the idempotency short-circuit.
+
+### 2026-05-20 - Phase 6 Part 2 Admin & Audit Operations
+
+- Followed the spec's signature-feature priority list: with §4.15 done, the next item was §4.16 (admin/audit ops).
+- Added `Microsoft.AspNetCore.Components.QuickGrid` 10.0.* and exposed the namespace globally through `_Imports.razor`.
+- New DTOs (`AdminDtos.cs`) and services (`IAuditQueryService`/`AuditQueryService`, `IFeatureFlagService`/`FeatureFlagService`) in Application + Infrastructure layers. `FeatureFlagService` seeds four canonical flags (analytics, notifications, replay, experimental-ui) on first read.
+- `AuditQueryService.GetAuditLogPageAsync` is shaped for QuickGrid's `ItemsProvider`: server-side paging through `Skip`/`Take` with a separate count query, projected DTO, and a follow-up Identity user join for display names. Avoids loading the whole ActivityLog table.
+- `AuditQueryService.GetWipBreachesAsync` uses a single LINQ query that joins BoardColumns with Boards (filtered by workspace) and projects a correlated count of TaskItems, keeping the breach detection to one roundtrip.
+- New pages:
+  - `/settings/audit` (`AuditOperations.razor`) — QuickGrid audit log with text + event-type + actor filters + Paginator, member-role matrix with role pills (Owner / Admin / Member / Viewer), WIP-breach table with over-amount highlight, failed-commands table, and a `data:text/csv` Export CSV anchor covering the first 1,000 matching rows.
+  - `/settings/features` (`FeatureFlags.razor`) — card grid with a custom toggle slider per flag; metadata footer shows last-updated timestamp and user id.
+- Both pages self-gate via `IAuditQueryService.GetUserRoleAsync`; non-Owner/Admin sessions see a "Forbidden" placeholder rather than the surface.
+- `Board.razor` now records a `FailedCommand` row when `ReplayQueuedAction` catches an exception, tagging the row with the queued action's `clientRequestId` as `CorrelationId`. `IBoardService.GetWorkspaceIdForBoardAsync` was promoted from `private` to support this.
+- Sidebar gained Audit + Feature flags `NavLink` rows under "Operations". Command palette gained `Open audit log` and `Open feature flags`.
+- Build: `dotnet build FlowBoard.sln -c Debug` → 0 warnings, 0 errors.
+- Runtime smoke at `http://localhost:5275` (under existing `dotnet watch`):
+  - `GET /settings/audit` unauthenticated → 302 to login (expected guard).
+  - `GET /settings/features` unauthenticated → 302 to login (expected guard).
+  - watch log clean after rebuild (no errors).
+
+Next recommended task: Phase 7 — notifications (§4.8) with the existing `Notification` entity, then a true workspace-level `/analytics` rollup. Optional cleanups: date-range filter on the audit grid; streaming CSV endpoint; admin-only seed user to exercise the role guard separately from Owner.

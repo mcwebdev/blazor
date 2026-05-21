@@ -48,6 +48,8 @@ public static class DependencyInjection
         services.AddScoped<IBoardService, BoardService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
+        services.AddScoped<IAuditQueryService, AuditQueryService>();
+        services.AddScoped<IFeatureFlagService, FeatureFlagService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
 
         return services;

@@ -426,35 +426,11 @@ a.nav-link:active .nav-copy strong {
     gap: 0.6rem;
 }
 
-.utility-button,
-.primary-action,
-.secondary-action {
-    min-height: 40px;
-    border: 0;
-    border-radius: 8px;
-    font: inherit;
-    font-weight: 700;
-}
-
-.utility-button {
-    min-width: 52px;
-    padding: 0 0.75rem;
-    background: #e6ebef;
-    color: #172026;
-}
-
-.primary-action {
-    padding: 0 1rem;
-    background: #276ef1;
-    color: #ffffff;
-}
-
-.secondary-action {
-    width: 100%;
-    padding: 0 0.9rem;
-    background: #172026;
-    color: #ffffff;
-}
+/* Top-bar utility/action buttons live in global app.css so any component
+   (command palette, board header, dashboard) can reuse them. Keeping them
+   scoped here would only style the buttons rendered directly inside
+   MainLayout because Blazor CSS isolation appends a per-component
+   attribute selector to every rule. */
 
 /* ── Error UI ────────────────────────────────────────────────── */
 

@@ -1,0 +1,109 @@
+@page "/settings/features"
+@page "/settings/workspace/{WorkspaceId:guid}/features"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@using FlowBoard.Infrastructure.Data
+@inject IFeatureFlagService FlagService
+@inject IAuditQueryService AuditService
+@inject ICurrentUserService CurrentUser
+
+<PageTitle>Feature flags · FlowBoard</PageTitle>
+
+@if (LoadState == PageLoadState.Loading)
+{
+    <section class="placeholder-page">
+        <p>Loading feature flags…</p>
+    </section>
+}
+else if (LoadState == PageLoadState.Forbidden)
+{
+    <section class="placeholder-page">
+        <p class="eyebrow">Forbidden</p>
+        <h2>You don't have access to workspace feature flags.</h2>
+        <p>Owner or Admin role is required.</p>
+    </section>
+}
+else
+{
+    <div class="section-heading compact">
+        <div>
+            <p class="eyebrow">Workspace operations</p>
+            <h2>Feature flags</h2>
+            <p style="margin: 0; color: #65717a; font-size: 0.9rem;">
+                Toggle capability rollout for analytics, notifications, replay, and experimental UI.
+            </p>
+        </div>
+        <div class="board-header-actions">
+            <a class="outline-action" href="@AuditHref">← Audit log</a>
+        </div>
+    </div>
+
+    <section class="flag-stack">
+        @foreach (var flag in Flags)
+        {
+            <article class="flag-card @(flag.IsEnabled ? "is-enabled" : "is-disabled")" @key="flag.Key">
+                <header>
+                    <div>
+                        <h3>@flag.DisplayName</h3>
+                        <code class="flag-key">@flag.Key</code>
+                    </div>
+                    <label class="flag-toggle">
+                        <input type="checkbox" checked="@flag.IsEnabled" @onchange="@(e => OnToggleAsync(flag.Key, (bool)(e.Value ?? false)))" />
+                        <span class="flag-slider"></span>
+                    </label>
+                </header>
+                <p class="flag-description">@flag.Description</p>
+                <footer class="flag-meta">
+                    <span>Updated @flag.UpdatedAtUtc.ToString("yyyy-MM-dd HH:mm")</span>
+                    @if (!string.IsNullOrEmpty(flag.UpdatedByUserId))
+                    {
+                        <span>by @flag.UpdatedByUserId</span>
+                    }
+                </footer>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid? WorkspaceId { get; set; }
+
+    private enum PageLoadState { Loading, Forbidden, Ready }
+
+    private PageLoadState LoadState = PageLoadState.Loading;
+    private Guid ResolvedWorkspaceId;
+    private IReadOnlyList<FeatureFlagRowDto> Flags = [];
+    private string AuditHref => $"/settings/workspace/{ResolvedWorkspaceId}/audit";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ResolvedWorkspaceId = WorkspaceId ?? SeedData.WorkspaceId;
+
+        var userId = CurrentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            LoadState = PageLoadState.Forbidden;
+            return;
+        }
+
+        var role = await AuditService.GetUserRoleAsync(ResolvedWorkspaceId, userId);
+        if (role is not WorkspaceRole.Owner and not WorkspaceRole.Admin)
+        {
+            LoadState = PageLoadState.Forbidden;
+            return;
+        }
+
+        Flags = await FlagService.GetFlagsAsync(ResolvedWorkspaceId);
+        LoadState = PageLoadState.Ready;
+    }
+
+    private async Task OnToggleAsync(string key, bool isEnabled)
+    {
+        await FlagService.SetFlagAsync(ResolvedWorkspaceId, key, isEnabled, CurrentUser.UserId);
+        Flags = await FlagService.GetFlagsAsync(ResolvedWorkspaceId);
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dotnet": {
+      "command": "/home/d33psp33d/.dotnet/dnx",
+      "args": ["Community.Mcp.DotNet@1.*", "--yes"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}

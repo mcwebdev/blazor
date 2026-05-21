@@ -285,6 +285,23 @@ public class BoardService : IBoardService
         if (string.IsNullOrWhiteSpace(title))
             throw new InvalidOperationException("Task title is required.");
 
+        // Idempotency guard: if the offline queue replays the same create
+        // after reconnect, return the previously-created task instead of
+        // inserting a duplicate.
+        if (!string.IsNullOrWhiteSpace(taskDto.ClientRequestId))
+        {
+            var existingTaskId = await FindExistingTaskByIdempotencyKeyAsync(
+                taskDto.ClientRequestId,
+                ActivityEventType.TaskCreated);
+
+            if (existingTaskId.HasValue)
+            {
+                var existing = await GetTaskAsync(existingTaskId.Value);
+                if (existing is not null)
+                    return existing;
+            }
+        }
+
         var board = await _db.Boards
             .AsNoTracking()
             .FirstOrDefaultAsync(b => b.Id == taskDto.BoardId);
@@ -336,7 +353,8 @@ public class BoardService : IBoardService
                 task.DueDateUtc,
                 ColumnId = targetColumn.Id,
                 ColumnName = targetColumn.Name
-            });
+            },
+            idempotencyKey: NormalizeOptionalText(taskDto.ClientRequestId));
 
         await _db.SaveChangesAsync();
 
@@ -566,7 +584,7 @@ public class BoardService : IBoardService
             : DateTime.SpecifyKind(value.Value.Date, DateTimeKind.Utc);
     }
 
-    private Task<Guid> GetWorkspaceIdForBoardAsync(Guid boardId)
+    public Task<Guid> GetWorkspaceIdForBoardAsync(Guid boardId)
     {
         return _db.Boards
             .Where(b => b.Id == boardId)
@@ -581,7 +599,8 @@ public class BoardService : IBoardService
         ActivityEventType eventType,
         string summary,
         object before,
-        object after)
+        object after,
+        string? idempotencyKey = null)
     {
         var maxSequenceNumber = await _db.ActivityLogs
             .Where(a => a.BoardId == boardId)
@@ -603,8 +622,33 @@ public class BoardService : IBoardService
             Summary = summary,
             BeforeJson = System.Text.Json.JsonSerializer.Serialize(before),
             AfterJson = System.Text.Json.JsonSerializer.Serialize(after),
+            IdempotencyKey = idempotencyKey,
             CreatedAtUtc = DateTime.UtcNow
         });
+    }
+
+    // Look up the entity created by a previous occurrence of the same client
+    // request, scoped to (workspace, command type, actor user) per spec §15.
+    // Returns the TaskItemId of the original create, or null if there's no
+    // prior record.
+    private async Task<Guid?> FindExistingTaskByIdempotencyKeyAsync(
+        string clientRequestId,
+        ActivityEventType eventType)
+    {
+        if (string.IsNullOrWhiteSpace(clientRequestId))
+            return null;
+
+        var actor = _currentUser.UserId ?? "system";
+
+        return await _db.ActivityLogs
+            .AsNoTracking()
+            .Where(a => a.IdempotencyKey == clientRequestId
+                && a.EventType == eventType
+                && a.ActorUserId == actor
+                && a.TaskItemId != null)
+            .OrderBy(a => a.CreatedAtUtc)
+            .Select(a => (Guid?)a.TaskItemId!.Value)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<TaskChecklistItemDto> AddChecklistItemAsync(Guid taskId, string text, string actorUserId)
@@ -673,7 +717,7 @@ public class BoardService : IBoardService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<TaskCommentDto> AddCommentAsync(Guid taskId, string body, string actorUserId)
+    public async Task<TaskCommentDto> AddCommentAsync(Guid taskId, string body, string actorUserId, string? clientRequestId = null)
     {
         var task = await _db.TaskItems.FindAsync(taskId);
         if (task is null)
@@ -682,6 +726,36 @@ public class BoardService : IBoardService
         var user = await _db.Users.FindAsync(actorUserId);
         if (user is null)
             throw new InvalidOperationException("User not found.");
+
+        // Idempotency guard: if the offline queue replays the same comment
+        // after reconnect, return the previously-added comment row instead
+        // of inserting a duplicate.
+        if (!string.IsNullOrWhiteSpace(clientRequestId))
+        {
+            var existingActivity = await _db.ActivityLogs
+                .AsNoTracking()
+                .Where(a => a.IdempotencyKey == clientRequestId
+                    && a.EventType == ActivityEventType.CommentAdded
+                    && a.ActorUserId == actorUserId
+                    && a.TaskItemId == taskId)
+                .OrderBy(a => a.CreatedAtUtc)
+                .Select(a => new { a.CreatedAtUtc, a.AfterJson })
+                .FirstOrDefaultAsync();
+
+            if (existingActivity is not null)
+            {
+                var prior = await _db.TaskComments
+                    .AsNoTracking()
+                    .Where(c => c.TaskItemId == taskId
+                        && c.UserId == actorUserId
+                        && c.CreatedAtUtc == existingActivity.CreatedAtUtc)
+                    .OrderByDescending(c => c.CreatedAtUtc)
+                    .FirstOrDefaultAsync();
+
+                if (prior is not null)
+                    return new TaskCommentDto(prior.Id, prior.Body, user.DisplayName, prior.CreatedAtUtc);
+            }
+        }
 
         var comment = new TaskComment
         {
@@ -703,7 +777,8 @@ public class BoardService : IBoardService
             ActivityEventType.CommentAdded,
             $"Commented on {task.Title}.",
             new { },
-            new { CommentBody = comment.Body });
+            new { CommentBody = comment.Body },
+            idempotencyKey: NormalizeOptionalText(clientRequestId));
 
         await _db.SaveChangesAsync();
 

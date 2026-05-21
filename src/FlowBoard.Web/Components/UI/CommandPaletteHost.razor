@@ -128,7 +128,21 @@
             "H",
             "health deploy cloud run firebase",
             true,
-            () => NavigateAsync("/health"))
+            () => NavigateAsync("/health")),
+        new(
+            "Open audit log",
+            "Workspace activity, member roles, WIP breaches, failed commands",
+            "U",
+            "audit log activity members wip failed commands operations",
+            true,
+            () => NavigateAsync("/settings/audit")),
+        new(
+            "Open feature flags",
+            "Toggle analytics, notifications, replay, and experimental UI",
+            "F",
+            "feature flags toggles experimental notifications replay",
+            true,
+            () => NavigateAsync("/settings/features"))
     };
 
     private IReadOnlyList<CommandItem> VisibleCommands

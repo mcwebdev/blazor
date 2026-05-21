@@ -5,5 +5,6 @@ public enum RealtimeConnectionState
     Disconnected,
     Connecting,
     Connected,
-    Reconnecting
+    Reconnecting,
+    SyncPending
 }

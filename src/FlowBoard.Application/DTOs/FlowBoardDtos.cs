@@ -96,6 +96,11 @@ public class CreateTaskDto
     public TaskItemStatus Status { get; set; } = TaskItemStatus.Open;
     public string? AssigneeUserId { get; set; }
     public DateTime? DueDateUtc { get; set; }
+
+    // Optional client-supplied key so the offline action queue can replay a
+    // create after reconnect without producing duplicate tasks. Scoped to
+    // (workspace, user, command-type) at lookup time per spec §15.
+    public string? ClientRequestId { get; set; }
 }
 
 public sealed record BoardMemberDto(

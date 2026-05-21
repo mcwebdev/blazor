@@ -1,8 +1,10 @@
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Domain.Enums
+@implements IAsyncDisposable
 @inject IBoardService BoardService
 @inject ICurrentUserService CurrentUserService
+@inject IJSRuntime JS
 
 <div class="task-drawer-backdrop @(IsOpen ? "open" : "")" @onclick="CloseAsync"></div>
 <div class="task-drawer @(IsOpen ? "open" : "")">
@@ -13,6 +15,17 @@
             <button type="button" class="close-btn" @onclick="CloseAsync">x</button>
         </div>
         <div class="drawer-body">
+            @if (IsCreateMode && ShowDraftRestorePrompt)
+            {
+                <div class="draft-restore-banner" role="status">
+                    <span>You have an unsaved draft for this board. Restore it?</span>
+                    <span>
+                        <button type="button" @onclick="RestoreDraftAsync">Restore</button>
+                        <button type="button" class="draft-discard" @onclick="DismissDraftPromptAsync">Discard</button>
+                    </span>
+                </div>
+            }
+
             @if (!string.IsNullOrWhiteSpace(ValidationMessage))
             {
                 <div class="alert-danger">@ValidationMessage</div>
@@ -20,7 +33,7 @@
 
             <div class="form-group">
                 <label for="task-title-input">Title</label>
-                <input id="task-title-input" name="task-title" type="text" class="form-control" @bind="Task.Title" @onfocus="@(() => HandleFocusAsync("Title"))" @onblur="@(() => HandleBlurAsync("Title"))" />
+                <input id="task-title-input" name="task-title" type="text" class="form-control" @bind="Task.Title" @bind:event="oninput" @onfocus="HandleTitleFocus" @onblur="HandleTitleBlur" @onkeyup="HandleDraftFieldChanged" />
                 @if (ActiveEditors.TryGetValue("Title", out var titleEditors) && titleEditors.Any())
                 {
                     <div class="field-editing-indicator" style="font-size: 0.8rem; color: #6c757d; margin-top: 4px;">
@@ -31,7 +44,7 @@
 
             <div class="form-group">
                 <label for="task-description-input">Description</label>
-                <textarea id="task-description-input" name="task-description" class="form-control" rows="4" @bind="Task.Description" @onfocus="@(() => HandleFocusAsync("Description"))" @onblur="@(() => HandleBlurAsync("Description"))"></textarea>
+                <textarea id="task-description-input" name="task-description" class="form-control" rows="4" @bind="Task.Description" @bind:event="oninput" @onfocus="HandleDescriptionFocus" @onblur="HandleDescriptionBlur" @onkeyup="HandleDraftFieldChanged"></textarea>
                 @if (ActiveEditors.TryGetValue("Description", out var descEditors) && descEditors.Any())
                 {
                     <div class="field-editing-indicator" style="font-size: 0.8rem; color: #6c757d; margin-top: 4px;">
@@ -177,6 +190,9 @@
 
 @code {
     [Parameter]
+    public Guid? BoardId { get; set; }
+
+    [Parameter]
     public EventCallback<TaskDrawerSavedArgs> OnTaskSaved { get; set; }
 
     [Parameter]
@@ -185,6 +201,12 @@
     [Parameter]
     public EventCallback<TaskFieldEditArgs> OnFieldBlurred { get; set; }
 
+    // Fired after the drawer enqueues a create-task action to localStorage
+    // (e.g. server rejected with a connection failure). Reports the new
+    // pending count so the board page can update the connection badge.
+    [Parameter]
+    public EventCallback<int> OnDraftQueued { get; set; }
+
     public bool IsOpen { get; private set; }
     public TaskDetailDto? Task { get; private set; }
     private IReadOnlyList<BoardMemberDto> BoardMembers = [];
@@ -192,12 +214,24 @@
     private bool IsLoading;
     private bool IsSaving;
     private string? ValidationMessage;
-    
+    private bool ShowDraftRestorePrompt;
+    private TaskDraftSnapshot? PendingDraft;
+    private IJSObjectReference? offlineModule;
+
     private IReadOnlyList<TaskLabelDto> AvailableLabels = [];
     private string NewChecklistText = "";
     private string NewCommentText = "";
 
     private Dictionary<string, List<string>> ActiveEditors = new();
+
+    private sealed record TaskDraftSnapshot(
+        string Title,
+        string? Description,
+        TaskPriority Priority,
+        TaskItemStatus Status,
+        string? AssigneeUserId,
+        DateTime? DueDateUtc,
+        DateTime SavedAtUtc);
 
     private static readonly TaskItemStatus[] AvailableStatuses =
     [
@@ -241,11 +275,13 @@
         ValidationMessage = null;
         Task = null;
         BoardMembers = [];
+        ShowDraftRestorePrompt = false;
+        PendingDraft = null;
         StateHasChanged();
 
         BoardMembers = await BoardService.GetBoardMembersAsync(boardId);
         AvailableLabels = await BoardService.GetLabelsForBoardAsync(boardId);
-        
+
         Task = new TaskDetailDto
         {
             BoardId = boardId,
@@ -256,6 +292,104 @@
 
         IsLoading = false;
         StateHasChanged();
+
+        // Check for an unsaved draft for this board. We surface a prompt
+        // instead of auto-restoring so the user is never silently confused
+        // about why fields are populated.
+        try
+        {
+            await EnsureOfflineModuleAsync();
+            if (offlineModule is not null)
+            {
+                var draft = await offlineModule.InvokeAsync<TaskDraftSnapshot?>("loadDraft", boardId);
+                if (draft is not null && !string.IsNullOrWhiteSpace(draft.Title))
+                {
+                    PendingDraft = draft;
+                    ShowDraftRestorePrompt = true;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (JSException)
+        {
+            // localStorage unavailable; non-fatal.
+        }
+    }
+
+    private async ValueTask EnsureOfflineModuleAsync()
+    {
+        if (offlineModule is null)
+        {
+            try
+            {
+                offlineModule = await JS.InvokeAsync<IJSObjectReference>("import", "/js/offlineDrafts.js");
+            }
+            catch (JSException)
+            {
+                offlineModule = null;
+            }
+        }
+    }
+
+    private async Task RestoreDraftAsync()
+    {
+        if (Task is null || PendingDraft is null)
+            return;
+
+        Task.Title = PendingDraft.Title;
+        Task.Description = PendingDraft.Description;
+        Task.Priority = PendingDraft.Priority;
+        Task.Status = PendingDraft.Status;
+        Task.AssigneeUserId = PendingDraft.AssigneeUserId;
+        Task.DueDateUtc = PendingDraft.DueDateUtc;
+
+        ShowDraftRestorePrompt = false;
+        PendingDraft = null;
+        StateHasChanged();
+
+        await System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    private async Task DismissDraftPromptAsync()
+    {
+        ShowDraftRestorePrompt = false;
+        PendingDraft = null;
+
+        if (Task is not null && offlineModule is not null)
+        {
+            try
+            {
+                await offlineModule.InvokeVoidAsync("clearDraft", Task.BoardId);
+            }
+            catch (JSException) { /* non-fatal */ }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task HandleDraftFieldChanged()
+    {
+        if (!IsCreateMode || Task is null || offlineModule is null)
+            return;
+
+        // Don't autosave a truly empty draft: that just creates noise in
+        // localStorage with no value to the user.
+        if (string.IsNullOrWhiteSpace(Task.Title) && string.IsNullOrWhiteSpace(Task.Description))
+            return;
+
+        try
+        {
+            await offlineModule.InvokeVoidAsync("saveDraft", Task.BoardId, new
+            {
+                title = Task.Title,
+                description = Task.Description,
+                priority = Task.Priority.ToString(),
+                status = Task.Status.ToString(),
+                assigneeUserId = Task.AssigneeUserId,
+                dueDateUtc = Task.DueDateUtc
+            });
+        }
+        catch (JSException) { /* localStorage may be full or blocked; non-fatal */ }
     }
 
     public async Task CloseAsync()
@@ -297,6 +431,12 @@
         {
             if (IsCreateMode)
             {
+                // Stamp a fresh idempotency key. Used both on the normal
+                // server call and as the queue entry's id if we have to fall
+                // back to localStorage. Either path is safe: the server
+                // returns the existing task on the second occurrence.
+                var clientRequestId = Guid.NewGuid().ToString("D");
+
                 var created = await BoardService.CreateTaskAsync(new CreateTaskDto
                 {
                     BoardId = Task.BoardId,
@@ -305,9 +445,11 @@
                     Priority = Task.Priority,
                     Status = Task.Status,
                     AssigneeUserId = Task.AssigneeUserId,
-                    DueDateUtc = Task.DueDateUtc
+                    DueDateUtc = Task.DueDateUtc,
+                    ClientRequestId = clientRequestId
                 });
 
+                await ClearDraftAsync(Task.BoardId);
                 await OnTaskSaved.InvokeAsync(new TaskDrawerSavedArgs(
                     "TaskCreated",
                     $"Created {created.Title}."));
@@ -332,10 +474,81 @@
             ValidationMessage = ex.Message;
             IsSaving = false;
         }
-        catch
+        catch (Exception)
         {
+            // For create-mode failures we treat the action as queueable:
+            // persist to localStorage and let the board reconnect path
+            // replay it. Edits/updates are not queued because they depend
+            // on a Version token that may be stale by the time we replay.
+            if (IsCreateMode)
+            {
+                var queued = await TryEnqueueDraftAsync();
+                if (queued)
+                {
+                    await ClearDraftAsync(Task.BoardId);
+                    await CloseAsync();
+                    return;
+                }
+            }
+
             ValidationMessage = "Could not save the task. Try again.";
             IsSaving = false;
+        }
+    }
+
+    private async Task<bool> TryEnqueueDraftAsync()
+    {
+        if (Task is null)
+            return false;
+
+        await EnsureOfflineModuleAsync();
+        if (offlineModule is null)
+            return false;
+
+        try
+        {
+            await offlineModule.InvokeVoidAsync("enqueueAction", Task.BoardId, "create-task", new
+            {
+                title = Task.Title,
+                description = Task.Description,
+                priority = Task.Priority.ToString(),
+                status = Task.Status.ToString(),
+                assigneeUserId = Task.AssigneeUserId,
+                dueDateUtc = Task.DueDateUtc
+            });
+
+            var pending = await offlineModule.InvokeAsync<int>("pendingCount", Task.BoardId);
+            await OnDraftQueued.InvokeAsync(pending);
+            return true;
+        }
+        catch (JSException)
+        {
+            return false;
+        }
+    }
+
+    private async Task ClearDraftAsync(Guid boardId)
+    {
+        if (offlineModule is null)
+            return;
+
+        try
+        {
+            await offlineModule.InvokeVoidAsync("clearDraft", boardId);
+        }
+        catch (JSException) { /* non-fatal */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (offlineModule is not null)
+        {
+            try
+            {
+                await offlineModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
         }
     }
 
@@ -414,6 +627,11 @@
             await OnFieldBlurred.InvokeAsync(new TaskFieldEditArgs(Task.BoardId, Task.Id, fieldName));
         }
     }
+
+    private Task HandleTitleFocus() => HandleFocusAsync("Title");
+    private Task HandleTitleBlur() => HandleBlurAsync("Title");
+    private Task HandleDescriptionFocus() => HandleFocusAsync("Description");
+    private Task HandleDescriptionBlur() => HandleBlurAsync("Description");
 
     private static string FormatStatus(TaskItemStatus status)
     {

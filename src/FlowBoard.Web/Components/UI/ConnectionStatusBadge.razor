@@ -1,18 +1,26 @@
 @using FlowBoard.Web.Models
 
-<div class="connection-badge @StateClass">
+<div class="connection-badge @StateClass" title="@TooltipText">
     <span class="connection-dot"></span>
     <span class="connection-label">@Label</span>
+    @if (PendingCount > 0)
+    {
+        <span class="connection-pending-count" aria-label="@PendingCount pending actions">@PendingCount</span>
+    }
 </div>
 
 @code {
     [Parameter]
     public RealtimeConnectionState State { get; set; } = RealtimeConnectionState.Disconnected;
 
+    [Parameter]
+    public int PendingCount { get; set; }
+
     private string StateClass => State switch
     {
         RealtimeConnectionState.Connected => "connected",
         RealtimeConnectionState.Reconnecting => "reconnecting",
+        RealtimeConnectionState.SyncPending => "sync-pending",
         _ => "disconnected"
     };
 
@@ -21,6 +29,18 @@
         RealtimeConnectionState.Connected => "Live",
         RealtimeConnectionState.Connecting => "Connecting",
         RealtimeConnectionState.Reconnecting => "Reconnecting…",
+        RealtimeConnectionState.SyncPending => "Sync pending",
         _ => "Offline"
+    };
+
+    private string TooltipText => State switch
+    {
+        RealtimeConnectionState.Connected => PendingCount > 0
+            ? $"Live · {PendingCount} action(s) queued"
+            : "Connected to the board in real time.",
+        RealtimeConnectionState.Connecting => "Establishing real-time connection…",
+        RealtimeConnectionState.Reconnecting => "Connection dropped. Reconnecting with backoff…",
+        RealtimeConnectionState.SyncPending => $"Reconnected. Replaying {PendingCount} queued action(s)…",
+        _ => "Offline. Edits are saved locally and will sync when you reconnect."
     };
 }

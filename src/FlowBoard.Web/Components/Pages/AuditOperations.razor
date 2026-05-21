@@ -1,0 +1,319 @@
+@page "/settings/audit"
+@page "/settings/workspace/{WorkspaceId:guid}/audit"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using System.Globalization
+@using System.Text
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@using FlowBoard.Infrastructure.Data
+@inject IAuditQueryService AuditService
+@inject ICurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Audit operations · FlowBoard</PageTitle>
+
+@if (LoadState == PageLoadState.Loading)
+{
+    <section class="placeholder-page">
+        <p>Loading audit operations…</p>
+    </section>
+}
+else if (LoadState == PageLoadState.Forbidden)
+{
+    <section class="placeholder-page">
+        <p class="eyebrow">Forbidden</p>
+        <h2>You don't have access to this workspace's audit log.</h2>
+        <p>Owner or Admin role is required.</p>
+    </section>
+}
+else
+{
+    <div class="section-heading compact">
+        <div>
+            <p class="eyebrow">Workspace operations</p>
+            <h2>Audit &amp; admin</h2>
+            <p style="margin: 0; color: #65717a; font-size: 0.9rem;">
+                Activity log, member roles, feature flags, WIP-limit breaches, and failed commands for this workspace.
+            </p>
+        </div>
+        <div class="board-header-actions">
+            <a class="outline-action" href="@FeaturesHref">Feature flags →</a>
+            <a class="primary-action" href="@AuditCsvDataUrl" download="@AuditCsvFileName">Export CSV</a>
+        </div>
+    </div>
+
+    <section class="audit-stack">
+        <div class="audit-card">
+            <header>
+                <h3>Activity log</h3>
+                <span class="audit-count">@TotalCount entries</span>
+            </header>
+
+            <div class="audit-filter-row">
+                <input type="search" class="form-control" placeholder="Search summary…" @bind="SearchInput" @bind:event="oninput" @onkeyup="ApplyFilterAsync" />
+                <select class="form-control" @bind="EventTypeInput" @bind:after="ApplyFilterAsync">
+                    <option value="">All event types</option>
+                    @foreach (var et in EventTypes)
+                    {
+                        <option value="@et">@et</option>
+                    }
+                </select>
+                <select class="form-control" @bind="ActorInput" @bind:after="ApplyFilterAsync">
+                    <option value="">All actors</option>
+                    @foreach (var m in Members)
+                    {
+                        <option value="@m.UserId">@m.DisplayName</option>
+                    }
+                </select>
+                <button type="button" class="outline-action" @onclick="ClearFiltersAsync">Clear</button>
+            </div>
+
+            <QuickGrid TGridItem="AuditLogRowDto" Class="audit-grid" ItemsProvider="LoadAuditPageAsync" Pagination="@AuditPagination">
+                <PropertyColumn Property="@(r => r.CreatedAtUtc)" Title="When" Format="yyyy-MM-dd HH:mm" />
+                <PropertyColumn Property="@(r => r.ActorDisplayName)" Title="Actor" />
+                <PropertyColumn Property="@(r => r.EventType)" Title="Event" />
+                <PropertyColumn Property="@(r => r.Summary)" Title="Summary" />
+                <TemplateColumn Title="Idempotency">
+                    @if (!string.IsNullOrEmpty(context.IdempotencyKey))
+                    {
+                        <code class="audit-idem">@context.IdempotencyKey.Substring(0, Math.Min(8, context.IdempotencyKey.Length))…</code>
+                    }
+                </TemplateColumn>
+            </QuickGrid>
+
+            <Paginator State="AuditPagination" />
+        </div>
+
+        <div class="audit-row">
+            <div class="audit-card">
+                <header>
+                    <h3>Member roles</h3>
+                    <span class="audit-count">@Members.Count members</span>
+                </header>
+                <table class="audit-table">
+                    <thead>
+                        <tr><th>Member</th><th>Email</th><th>Role</th><th>Joined</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in Members)
+                        {
+                            <tr>
+                                <td>@m.DisplayName</td>
+                                <td>@m.Email</td>
+                                <td><span class="role-pill role-@(m.Role.ToString().ToLowerInvariant())">@m.Role</span></td>
+                                <td>@m.JoinedAtUtc.ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="audit-card">
+                <header>
+                    <h3>WIP-limit breaches</h3>
+                    <span class="audit-count">@WipBreaches.Count active</span>
+                </header>
+                @if (WipBreaches.Count == 0)
+                {
+                    <p class="audit-empty">No columns currently exceed their WIP limit.</p>
+                }
+                else
+                {
+                    <table class="audit-table">
+                        <thead>
+                            <tr><th>Board</th><th>Column</th><th>Limit</th><th>Current</th><th>Over</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var w in WipBreaches)
+                            {
+                                <tr>
+                                    <td>@w.BoardName</td>
+                                    <td>@w.ColumnName</td>
+                                    <td>@w.WipLimit</td>
+                                    <td>@w.CurrentCount</td>
+                                    <td class="audit-over">+@(w.CurrentCount - w.WipLimit)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        <div class="audit-card">
+            <header>
+                <h3>Failed commands</h3>
+                <span class="audit-count">@FailedCommands.Count recent</span>
+            </header>
+            @if (FailedCommands.Count == 0)
+            {
+                <p class="audit-empty">No failed commands recorded. Nice.</p>
+            }
+            else
+            {
+                <table class="audit-table">
+                    <thead>
+                        <tr><th>When</th><th>User</th><th>Command</th><th>Error</th><th>Correlation</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in FailedCommands)
+                        {
+                            <tr>
+                                <td>@f.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@f.UserId</td>
+                                <td><code>@f.CommandType</code></td>
+                                <td>@f.ErrorSummary</td>
+                                <td>@(f.CorrelationId?.ToString().Substring(0, 8) ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid? WorkspaceId { get; set; }
+
+    private enum PageLoadState { Loading, Forbidden, Ready }
+
+    private PageLoadState LoadState = PageLoadState.Loading;
+    private Guid ResolvedWorkspaceId;
+    private IReadOnlyList<WorkspaceMemberRowDto> Members = [];
+    private IReadOnlyList<WipBreachRowDto> WipBreaches = [];
+    private IReadOnlyList<FailedCommandRowDto> FailedCommands = [];
+
+    private string SearchInput = string.Empty;
+    private string EventTypeInput = string.Empty;
+    private string ActorInput = string.Empty;
+    private int TotalCount;
+
+    private static readonly string[] EventTypes =
+        Enum.GetNames(typeof(ActivityEventType));
+
+    private PaginationState AuditPagination = new() { ItemsPerPage = 20 };
+    private string FeaturesHref => $"/settings/workspace/{ResolvedWorkspaceId}/features";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Resolve the workspace either from the route parameter or the
+        // seeded demo workspace. Multi-workspace selection comes later.
+        ResolvedWorkspaceId = WorkspaceId ?? SeedData.WorkspaceId;
+
+        var userId = CurrentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            LoadState = PageLoadState.Forbidden;
+            return;
+        }
+
+        var role = await AuditService.GetUserRoleAsync(ResolvedWorkspaceId, userId);
+        if (role is not WorkspaceRole.Owner and not WorkspaceRole.Admin)
+        {
+            LoadState = PageLoadState.Forbidden;
+            return;
+        }
+
+        Members = await AuditService.GetWorkspaceMembersAsync(ResolvedWorkspaceId);
+        WipBreaches = await AuditService.GetWipBreachesAsync(ResolvedWorkspaceId);
+        FailedCommands = await AuditService.GetFailedCommandsAsync(ResolvedWorkspaceId);
+
+        LoadState = PageLoadState.Ready;
+    }
+
+    // QuickGrid calls this for every page/sort/filter event. We project
+    // server-side via the AuditQueryService and return only the slice the
+    // grid needs.
+    private async ValueTask<GridItemsProviderResult<AuditLogRowDto>> LoadAuditPageAsync(
+        GridItemsProviderRequest<AuditLogRowDto> request)
+    {
+        var filter = new AuditLogFilterDto(
+            string.IsNullOrWhiteSpace(SearchInput) ? null : SearchInput.Trim(),
+            string.IsNullOrWhiteSpace(EventTypeInput) ? null : EventTypeInput,
+            string.IsNullOrWhiteSpace(ActorInput) ? null : ActorInput,
+            null,
+            null);
+
+        var page = await AuditService.GetAuditLogPageAsync(
+            ResolvedWorkspaceId,
+            filter,
+            request.StartIndex,
+            request.Count ?? 20,
+            request.CancellationToken);
+
+        TotalCount = page.TotalCount;
+        return GridItemsProviderResult.From(page.Items.ToList(), page.TotalCount);
+    }
+
+    private async Task ApplyFilterAsync()
+    {
+        // Reset to first page so the user sees the top of the new result
+        // set instead of an empty page beyond the filtered count.
+        await AuditPagination.SetCurrentPageIndexAsync(0);
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        SearchInput = string.Empty;
+        EventTypeInput = string.Empty;
+        ActorInput = string.Empty;
+        await AuditPagination.SetCurrentPageIndexAsync(0);
+    }
+
+    private string AuditCsvFileName => $"flowboard-audit-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv";
+
+    // We export the FIRST 1000 rows that match the current filter rather
+    // than the visible page. This is the same trade-off the analytics
+    // drill-down makes: a real "export everything" would need a server
+    // endpoint with streaming, but 1000 rows in a data URL stays under
+    // every browser limit and covers >99% of operator use.
+    private string AuditCsvDataUrl
+    {
+        get
+        {
+            if (LoadState != PageLoadState.Ready) return "data:text/csv;charset=utf-8,";
+
+            var task = AuditService.GetAuditLogPageAsync(
+                ResolvedWorkspaceId,
+                new AuditLogFilterDto(
+                    string.IsNullOrWhiteSpace(SearchInput) ? null : SearchInput.Trim(),
+                    string.IsNullOrWhiteSpace(EventTypeInput) ? null : EventTypeInput,
+                    string.IsNullOrWhiteSpace(ActorInput) ? null : ActorInput,
+                    null,
+                    null),
+                0,
+                1000);
+            task.Wait();
+            var page = task.Result;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("CreatedAtUtc,Actor,EventType,Summary,BoardId,TaskId,IdempotencyKey");
+            foreach (var row in page.Items)
+            {
+                sb.Append(row.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture)).Append(',');
+                sb.Append(EscapeCsv(row.ActorDisplayName)).Append(',');
+                sb.Append(row.EventType).Append(',');
+                sb.Append(EscapeCsv(row.Summary)).Append(',');
+                sb.Append(row.BoardId?.ToString() ?? string.Empty).Append(',');
+                sb.Append(row.TaskItemId?.ToString() ?? string.Empty).Append(',');
+                sb.AppendLine(row.IdempotencyKey ?? string.Empty);
+            }
+
+            return $"data:text/csv;charset=utf-8,{Uri.EscapeDataString(sb.ToString())}";
+        }
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+        {
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+        return value;
+    }
+}
