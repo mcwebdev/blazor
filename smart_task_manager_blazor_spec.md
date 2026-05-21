@@ -1,5 +1,7 @@
 # Smart Task Manager — Full-Stack Blazor Technical Build Spec
 
+Author: OpenAI Codex
+
 ## 1. Project Summary
 
 Build a full-stack Blazor application that combines project/task management, real-time collaboration, analytics, replayable activity history, command-driven navigation, and polished UX. The app should feel like a lightweight Trello + Jira + operational dashboard experience.
@@ -14,7 +16,7 @@ Build a full-stack Blazor application that combines project/task management, rea
 
 ---
 
-## 2. Recommended Tech Stack
+## 2. Tech Stack
 
 ### Frontend
 
@@ -1635,11 +1637,3 @@ Prioritize depth, reliability, and one memorable signature experience over disco
 - Demo seed data with realistic multi-user activity
 - Screenshots or short GIFs for README
 
-**Defer to protect focus:**
-
-- Full file upload system
-- Complex AI integration
-- Payment features
-- Huge admin system
-
-The best version of this project is not the one with the most features. It is the one where the board feels alive, the data model supports the experience cleanly, and every visible feature is backed by coherent architecture.

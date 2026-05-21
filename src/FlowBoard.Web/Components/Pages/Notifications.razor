@@ -1,0 +1,155 @@
+@page "/notifications"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using FlowBoard.Application.DTOs
+@using FlowBoard.Application.Interfaces
+@using FlowBoard.Domain.Enums
+@inject INotificationService NotificationsService
+@inject ICurrentUserService CurrentUser
+@inject NavigationManager Navigation
+
+<PageTitle>Notifications · FlowBoard</PageTitle>
+
+<div class="section-heading compact">
+    <div>
+        <p class="eyebrow">Inbox</p>
+        <h2>Notifications</h2>
+        <p style="margin: 0; color: #65717a; font-size: 0.9rem;">
+            Assignments, @@mentions, and overdue reminders for tasks assigned to you.
+        </p>
+    </div>
+    <div class="board-header-actions">
+        @if (UnreadCount > 0)
+        {
+            <button type="button" class="outline-action" @onclick="MarkAllReadAsync">Mark all read</button>
+        }
+        <span class="audit-count">@TotalCount total · @UnreadCount unread</span>
+    </div>
+</div>
+
+@if (IsLoading)
+{
+    <section class="placeholder-page">
+        <p>Loading notifications…</p>
+    </section>
+}
+else if (Items.Count == 0)
+{
+    <section class="placeholder-page">
+        <p class="eyebrow">Inbox zero</p>
+        <h2>No notifications yet.</h2>
+        <p>Once teammates assign you tasks, @@mention you in comments, or your tasks go overdue, they'll show up here.</p>
+    </section>
+}
+else
+{
+    <section class="notifications-list">
+        @foreach (var item in Items)
+        {
+            <article class="notif-row @(item.IsRead ? "is-read" : "is-unread")" @key="item.Id">
+                <span class="notif-icon @TypeClass(item.Type)" aria-hidden="true">@TypeGlyph(item.Type)</span>
+                <div class="notif-body">
+                    <header>
+                        <strong>@item.Title</strong>
+                        <time>@FormatRelative(item.CreatedAtUtc)</time>
+                    </header>
+                    <p>@item.Body</p>
+                    <div class="notif-actions">
+                        @if (item.RelatedTaskId.HasValue)
+                        {
+                            <a class="notif-link" href="/boards/demo">Open board →</a>
+                        }
+                        @if (!item.IsRead)
+                        {
+                            <button type="button" class="notif-link-button" @onclick="@(() => MarkReadAsync(item.Id))">Mark read</button>
+                        }
+                    </div>
+                </div>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    private IReadOnlyList<NotificationDto> Items = [];
+    private int UnreadCount;
+    private int TotalCount;
+    private bool IsLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var userId = CurrentUser.UserId;
+        if (string.IsNullOrEmpty(userId))
+        {
+            IsLoading = false;
+            return;
+        }
+
+        // Same lazy-overdue path the bell uses, so visiting /notifications
+        // directly still surfaces today's overdue work even if the user
+        // never opened the bell.
+        await NotificationsService.EnsureOverdueRemindersAsync(userId);
+
+        // Pull a larger slice for the full page than the bell does.
+        var list = await NotificationsService.GetForUserAsync(userId, take: 100);
+        Items = list.Items;
+        UnreadCount = list.UnreadCount;
+        TotalCount = list.Items.Count;
+        IsLoading = false;
+    }
+
+    private async Task MarkReadAsync(Guid id)
+    {
+        var userId = CurrentUser.UserId;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await NotificationsService.MarkReadAsync(id, userId);
+        await LoadAsync();
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        var userId = CurrentUser.UserId;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        await NotificationsService.MarkAllReadAsync(userId);
+        await LoadAsync();
+    }
+
+    private static string TypeGlyph(NotificationType type) => type switch
+    {
+        NotificationType.TaskAssigned => "👤",
+        NotificationType.TaskOverdue => "⏰",
+        NotificationType.CommentMention => "@",
+        NotificationType.MemberInvited => "✉",
+        NotificationType.BoardShared => "🔗",
+        _ => "•"
+    };
+
+    private static string TypeClass(NotificationType type) => type switch
+    {
+        NotificationType.TaskAssigned => "type-assigned",
+        NotificationType.TaskOverdue => "type-overdue",
+        NotificationType.CommentMention => "type-mention",
+        _ => "type-other"
+    };
+
+    private static string FormatRelative(DateTime createdAtUtc)
+    {
+        var ts = createdAtUtc.Kind == DateTimeKind.Utc
+            ? createdAtUtc
+            : DateTime.SpecifyKind(createdAtUtc, DateTimeKind.Utc);
+        var elapsed = DateTime.UtcNow - ts;
+
+        if (elapsed < TimeSpan.FromMinutes(1)) return "just now";
+        if (elapsed < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)elapsed.TotalMinutes)}m ago";
+        if (elapsed < TimeSpan.FromDays(1)) return $"{Math.Max(1, (int)elapsed.TotalHours)}h ago";
+        if (elapsed < TimeSpan.FromDays(30)) return $"{Math.Max(1, (int)elapsed.TotalDays)}d ago";
+        return createdAtUtc.ToString("MMM d, yyyy");
+    }
+}

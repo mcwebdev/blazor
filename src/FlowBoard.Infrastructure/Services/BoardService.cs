@@ -11,11 +11,16 @@ public class BoardService : IBoardService
 {
     private readonly FlowBoardDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly INotificationService _notifications;
 
-    public BoardService(FlowBoardDbContext db, ICurrentUserService currentUser)
+    public BoardService(
+        FlowBoardDbContext db,
+        ICurrentUserService currentUser,
+        INotificationService notifications)
     {
         _db = db;
         _currentUser = currentUser;
+        _notifications = notifications;
     }
 
     public async Task<BoardDto?> GetBoardAsync(Guid boardId)
@@ -358,6 +363,20 @@ public class BoardService : IBoardService
 
         await _db.SaveChangesAsync();
 
+        // Notify the assignee that they own a brand-new task. NotifyAsync
+        // skips when assignee == actor so creating a task assigned to
+        // yourself doesn't ping you.
+        if (!string.IsNullOrEmpty(task.AssigneeUserId))
+        {
+            await _notifications.NotifyAsync(
+                task.AssigneeUserId,
+                _currentUser.UserId,
+                NotificationType.TaskAssigned,
+                $"You were assigned: {task.Title}",
+                $"This task was just created on {board.Name}.",
+                task.Id);
+        }
+
         return await GetTaskAsync(task.Id)
             ?? throw new InvalidOperationException("Created task could not be loaded.");
     }
@@ -425,8 +444,22 @@ public class BoardService : IBoardService
                 task.AssigneeUserId,
                 task.DueDateUtc
             });
-        
+
         await _db.SaveChangesAsync();
+
+        // Re-assignment ping. Fires only when the assignee genuinely
+        // changed AND the new assignee is somebody other than the
+        // current user.
+        if (!string.IsNullOrEmpty(task.AssigneeUserId) && task.AssigneeUserId != beforeAssignee)
+        {
+            await _notifications.NotifyAsync(
+                task.AssigneeUserId,
+                _currentUser.UserId,
+                NotificationType.TaskAssigned,
+                $"You were assigned: {task.Title}",
+                "A task you didn't previously own is now assigned to you.",
+                task.Id);
+        }
     }
 
     public async Task ForceUpdateTaskAsync(TaskDetailDto taskDto)
@@ -782,7 +815,29 @@ public class BoardService : IBoardService
 
         await _db.SaveChangesAsync();
 
+        // Mention notifications — fan out to every @handle resolved from
+        // the comment body, scoped to board members so a comment can't
+        // ping a user in a different workspace.
+        var mentioned = await _notifications.ResolveMentionedUserIdsAsync(task.BoardId, comment.Body);
+        foreach (var recipientId in mentioned)
+        {
+            await _notifications.NotifyAsync(
+                recipientId,
+                actorUserId,
+                NotificationType.CommentMention,
+                $"{user.DisplayName} mentioned you",
+                TruncateForBody(comment.Body),
+                task.Id);
+        }
+
         return new TaskCommentDto(comment.Id, comment.Body, user.DisplayName, comment.CreatedAtUtc);
+    }
+
+    private static string TruncateForBody(string text, int max = 160)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= max)
+            return text;
+        return text.Substring(0, max - 1).TrimEnd() + "…";
     }
 
     public async Task<IReadOnlyList<TaskLabelDto>> GetLabelsForBoardAsync(Guid boardId)
