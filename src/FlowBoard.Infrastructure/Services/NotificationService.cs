@@ -17,10 +17,12 @@ public partial class NotificationService : INotificationService
     private static partial Regex MentionPattern();
 
     private readonly FlowBoardDbContext _db;
+    private readonly INotificationUpdateNotifier? _notifier;
 
-    public NotificationService(FlowBoardDbContext db)
+    public NotificationService(FlowBoardDbContext db, INotificationUpdateNotifier? notifier = null)
     {
         _db = db;
+        _notifier = notifier;
     }
 
     public async Task<NotificationListDto> GetForUserAsync(
@@ -72,6 +74,12 @@ public partial class NotificationService : INotificationService
         notification.IsRead = true;
         notification.UpdatedAtUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (_notifier != null)
+        {
+            var unreadCount = await GetUnreadCountAsync(userId, cancellationToken);
+            await _notifier.NotifyUnreadCountChangedAsync(userId, unreadCount);
+        }
     }
 
     public async Task MarkAllReadAsync(
@@ -93,6 +101,12 @@ public partial class NotificationService : INotificationService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (_notifier != null)
+        {
+            var unreadCount = await GetUnreadCountAsync(userId, cancellationToken);
+            await _notifier.NotifyUnreadCountChangedAsync(userId, unreadCount);
+        }
     }
 
     public async Task NotifyAsync(
@@ -141,6 +155,12 @@ public partial class NotificationService : INotificationService
         });
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (_notifier != null)
+        {
+            var unreadCount = await GetUnreadCountAsync(recipientUserId, cancellationToken);
+            await _notifier.NotifyUnreadCountChangedAsync(recipientUserId, unreadCount);
+        }
     }
 
     public async Task EnsureOverdueRemindersAsync(
@@ -202,6 +222,12 @@ public partial class NotificationService : INotificationService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (_notifier != null)
+        {
+            var unreadCount = await GetUnreadCountAsync(userId, cancellationToken);
+            await _notifier.NotifyUnreadCountChangedAsync(userId, unreadCount);
+        }
     }
 
     // Service-layer helper: scan a comment body for @handles and return

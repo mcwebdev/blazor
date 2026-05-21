@@ -190,6 +190,91 @@ public class AnalyticsService : IAnalyticsService
             leadHistogram);
     }
 
+    public async Task<WorkspaceAnalyticsSummaryDto> GetWorkspaceSummaryAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var boards = await _db.Boards
+            .AsNoTracking()
+            .Where(b => b.WorkspaceId == workspaceId)
+            .Select(b => new
+            {
+                b.Id,
+                b.Name,
+                ColumnCount = b.Columns.Count,
+                Tasks = b.Tasks.Select(t => new
+                {
+                    t.Status,
+                    t.DueDateUtc,
+                    t.CompletedAtUtc,
+                    t.AssigneeUserId
+                }).ToList()
+            })
+            .ToListAsync(ct);
+
+        var now = DateTime.UtcNow;
+        var weekAgo = now - WeekWindow;
+
+        var totalBoards = boards.Count;
+        var totalTasks = 0;
+        var overdueTasks = 0;
+        var completedThisWeek = 0;
+        var memberIds = new HashSet<string>();
+        var boardSummaries = new List<WorkspaceBoardSummaryDto>();
+
+        foreach (var b in boards)
+        {
+            var bTaskCount = b.Tasks.Count;
+            var bOverdue = 0;
+            var bCompleted = 0;
+            var bCompletedAllTime = 0;
+
+            foreach (var t in b.Tasks)
+            {
+                if (t.AssigneeUserId != null)
+                {
+                    memberIds.Add(t.AssigneeUserId);
+                }
+
+                if (t.Status == TaskItemStatus.Done || t.Status == TaskItemStatus.Archived)
+                {
+                    if (t.CompletedAtUtc.HasValue)
+                    {
+                        bCompletedAllTime++;
+                        if (t.CompletedAtUtc >= weekAgo)
+                        {
+                            bCompleted++;
+                        }
+                    }
+                }
+                else if (t.DueDateUtc.HasValue && t.DueDateUtc < now)
+                {
+                    bOverdue++;
+                }
+            }
+
+            totalTasks += bTaskCount;
+            overdueTasks += bOverdue;
+            completedThisWeek += bCompleted;
+
+            boardSummaries.Add(new WorkspaceBoardSummaryDto(
+                b.Id,
+                b.Name,
+                b.ColumnCount,
+                bTaskCount,
+                bOverdue,
+                bCompletedAllTime
+            ));
+        }
+
+        return new WorkspaceAnalyticsSummaryDto(
+            totalBoards,
+            totalTasks,
+            memberIds.Count,
+            overdueTasks,
+            completedThisWeek,
+            boardSummaries
+        );
+    }
+
     public async Task<AnalyticsDrilldownDto?> GetBoardDrilldownAsync(
         Guid boardId,
         AnalyticsMetric metric,

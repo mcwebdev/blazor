@@ -3,48 +3,99 @@
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Infrastructure.Data
-@inject IDashboardService DashboardService
+@inject IAnalyticsService AnalyticsService
 
-<PageTitle>Analytics · FlowBoard</PageTitle>
+<PageTitle>Workspace Analytics · FlowBoard</PageTitle>
 
 <section class="analytics-rollup">
-    <header>
+    <header class="workspace-analytics-header">
         <p class="eyebrow">Analytics</p>
-        <h1>Workspace analytics</h1>
+        <h1>Workspace Rollup</h1>
         <p class="analytics-rollup-subtitle">
-            Drill-down analytics are scoped to a single board today. Pick a board to open its analytics surface
-            (overdue, workload, cycle time, burndown, and drill-down task lists).
+            Aggregate insights across all boards in your workspace. Select a board to drill down into specific cycle times, burndown charts, and workload data.
         </p>
     </header>
 
-    @if (RecentBoard is null)
+    @if (Summary is null)
     {
-        <article class="analytics-rollup-card">
-            <p>No boards in this workspace yet. Create one to see analytics.</p>
-        </article>
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading workspace analytics...</p>
+        </div>
     }
     else
     {
-        <article class="analytics-rollup-card">
-            <p class="eyebrow">Recent board</p>
-            <h2>@RecentBoard.Name</h2>
-            <p class="analytics-rollup-meta">@RecentBoard.Columns.Count columns · @RecentBoard.Columns.Sum(c => c.Tasks.Count) tasks tracked.</p>
-            <div class="analytics-rollup-actions">
-                <a class="primary-action" href="/boards/@RecentBoard.Id/analytics">Open board analytics →</a>
-                <a class="secondary-action" href="/boards/@RecentBoard.Id">Go to board</a>
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <span class="metric-label">Total Boards</span>
+                <span class="metric-value">@Summary.TotalBoards</span>
             </div>
-        </article>
+            <div class="metric-card">
+                <span class="metric-label">Total Tasks</span>
+                <span class="metric-value">@Summary.TotalTasks</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-label">Active Members</span>
+                <span class="metric-value">@Summary.TotalMembers</span>
+            </div>
+            <div class="metric-card warning">
+                <span class="metric-label">Overdue Tasks</span>
+                <span class="metric-value">@Summary.OverdueTasks</span>
+            </div>
+            <div class="metric-card success">
+                <span class="metric-label">Completed This Week</span>
+                <span class="metric-value">@Summary.CompletedThisWeek</span>
+            </div>
+        </div>
+
+        <section class="boards-list-section">
+            <h2>Boards</h2>
+            @if (Summary.Boards.Count == 0)
+            {
+                <article class="analytics-rollup-card empty">
+                    <p>No boards in this workspace yet. Create one to see analytics.</p>
+                </article>
+            }
+            else
+            {
+                <div class="boards-grid">
+                    @foreach (var board in Summary.Boards)
+                    {
+                        <article class="analytics-rollup-card">
+                            <div class="board-card-header">
+                                <h3>@board.Name</h3>
+                            </div>
+                            <div class="board-card-stats">
+                                <div class="stat">
+                                    <span class="stat-value">@board.TaskCount</span>
+                                    <span class="stat-label">Tasks</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">@board.CompletedTasks</span>
+                                    <span class="stat-label">Completed</span>
+                                </div>
+                                <div class="stat @(board.OverdueTasks > 0 ? "warning-text" : "")">
+                                    <span class="stat-value">@board.OverdueTasks</span>
+                                    <span class="stat-label">Overdue</span>
+                                </div>
+                            </div>
+                            <div class="analytics-rollup-actions">
+                                <a class="primary-action" href="/boards/@board.BoardId/analytics">Drill down →</a>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
     }
 </section>
 
 @code {
-    private DashboardSummaryDto? Dashboard { get; set; }
-    private BoardDto? RecentBoard => Dashboard?.RecentBoard;
+    private WorkspaceAnalyticsSummaryDto? Summary { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        Dashboard = await DashboardService.GetDashboardAsync(
-            SeedData.DemoUserId,
-            SeedData.WorkspaceId);
+        // Use the demo workspace ID for now
+        Summary = await AnalyticsService.GetWorkspaceSummaryAsync(SeedData.WorkspaceId);
     }
 }

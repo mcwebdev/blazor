@@ -11,6 +11,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<BoardUpdateNotifier>();
+builder.Services.AddSingleton<FlowBoard.Application.Interfaces.INotificationUpdateNotifier, NotificationUpdateNotifier>();
 builder.Services.AddSingleton<FlowBoard.Application.Interfaces.IPresenceService, FlowBoard.Infrastructure.Services.PresenceService>();
 builder.Services.AddScoped<AppActionDispatcher>();
 
@@ -54,6 +55,8 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHub<BoardHub>("/hubs/board")
+    .DisableAntiforgery();
+app.MapHub<NotificationHub>("/hubs/notifications")
     .DisableAntiforgery();
 
 app.MapAdditionalIdentityEndpoints();

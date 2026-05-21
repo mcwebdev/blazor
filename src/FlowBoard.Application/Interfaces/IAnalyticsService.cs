@@ -11,4 +11,6 @@ public interface IAnalyticsService
         AnalyticsMetric metric,
         TaskFilterDto filter,
         CancellationToken ct = default);
+
+    Task<WorkspaceAnalyticsSummaryDto> GetWorkspaceSummaryAsync(Guid workspaceId, CancellationToken ct = default);
 }

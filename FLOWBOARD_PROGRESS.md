@@ -527,3 +527,21 @@ Next recommended task: Phase 6 part 2 — admin/audit operations (QuickGrid audi
   - watch log clean after rebuild (no errors).
 
 Next recommended task: Phase 7 — notifications (§4.8) with the existing `Notification` entity, then a true workspace-level `/analytics` rollup. Optional cleanups: date-range filter on the audit grid; streaming CSV endpoint; admin-only seed user to exercise the role guard separately from Owner.
+
+### 2026-05-20 - Stabilizing Test Suite
+
+- Addressed compilation errors and failing tests in `FlowBoard.Tests` by updating the `TestDbFactory` to support proper initialization.
+- Re-aligned `BoardServiceTests`, `AnalyticsServiceTests`, and `NotificationServiceTests` to match actual Domain changes (e.g. `TaskItemStatus.Open` instead of `.Todo`).
+- Ensured foreign key stability during local SQLite testing and mocked standard behaviors for reliable builds.
+- Verified all 22 tests in the `FlowBoard.Tests` suite are passing successfully.
+
+### 2026-05-20 - Phase 7 Part 2: Real-time Notifications (SignalR)
+
+- Migrated `NotificationBell` from a 30-second polling timer to a real-time SignalR push architecture, completing the signature requirement for §4.8.
+- Created `INotificationUpdateNotifier` (Application layer) and `NotificationHub` (Web layer mapped to `/hubs/notifications`).
+- Added a `NotificationUpdateNotifier` service to broadcast badge updates when an event modifies the user's unread notification count.
+- Updated `NotificationService` to invoke the notifier when `NotifyAsync`, `MarkReadAsync`, `MarkAllReadAsync`, and `EnsureOverdueRemindersAsync` modify state.
+- Wrote `wwwroot/js/notificationRealtime.js` to handle browser-side SignalR connections, invoking a C# `DotNetObjectReference` with the new unread count upon broadcast.
+- Re-ran tests and verified 22/22 unit tests still pass after integrating the loosely-coupled UI push notification dependencies.
+
+Next recommended task: Final project cleanups. Workspace-level `/analytics` rollup, Docker Compose file for local development (`docker-compose.yml`), and writing the polished `README.md` as required by spec §20 (with architecture diagrams, instructions, and screenshots).

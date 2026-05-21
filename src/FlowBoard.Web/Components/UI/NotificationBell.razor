@@ -2,10 +2,11 @@
 @using FlowBoard.Application.DTOs
 @using FlowBoard.Application.Interfaces
 @using FlowBoard.Domain.Enums
-@implements IDisposable
+@implements IAsyncDisposable
 @inject INotificationService Notifications
 @inject ICurrentUserService CurrentUser
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="notification-bell-wrap" @onclick:stopPropagation>
     <button type="button"
@@ -77,7 +78,9 @@
     private bool IsOpen;
     private IReadOnlyList<NotificationDto> Items = [];
     private int UnreadCount;
-    private System.Timers.Timer? _pollTimer;
+    
+    private DotNetObjectReference<NotificationBell>? _dotNetRef;
+    private IJSObjectReference? _realtimeModule;
 
     private string TooltipText => UnreadCount switch
     {
@@ -89,16 +92,31 @@
     protected override async Task OnInitializedAsync()
     {
         await RefreshCountAsync();
+    }
 
-        // Light polling so a badge appears when another user assigns
-        // something to me without me opening the bell. 30s is the
-        // sweet spot between bell freshness and database load for a
-        // single-instance demo. SignalR fanout will replace this in
-        // a future phase.
-        _pollTimer = new System.Timers.Timer(TimeSpan.FromSeconds(30).TotalMilliseconds);
-        _pollTimer.Elapsed += async (_, _) => await InvokeAsync(RefreshCountAsync);
-        _pollTimer.AutoReset = true;
-        _pollTimer.Start();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                _realtimeModule = await JS.InvokeAsync<IJSObjectReference>("import", "/js/notificationRealtime.js");
+                await _realtimeModule.InvokeVoidAsync("connect", _dotNetRef);
+            }
+            catch
+            {
+                // Ignore JS errors if SignalR is unavailable
+            }
+        }
+    }
+
+    [JSInvokable]
+    public Task HandleNotificationCountChanged(int count)
+    {
+        UnreadCount = count;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task RefreshCountAsync()
@@ -208,9 +226,21 @@
         return $"{Math.Max(1, (int)elapsed.TotalDays)}d ago";
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _pollTimer?.Stop();
-        _pollTimer?.Dispose();
+        if (_realtimeModule is not null)
+        {
+            try
+            {
+                await _realtimeModule.InvokeVoidAsync("disconnect");
+                await _realtimeModule.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore errors during disposal
+            }
+        }
+        
+        _dotNetRef?.Dispose();
     }
 }

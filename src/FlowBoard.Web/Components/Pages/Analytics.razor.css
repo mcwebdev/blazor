@@ -1,74 +1,177 @@
 .analytics-rollup {
-    display: grid;
-    gap: 1.5rem;
-    max-width: 720px;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
-.analytics-rollup h1 {
-    margin: 0.1rem 0 0.35rem 0;
-    font-size: 1.7rem;
-    color: #1d262d;
+.workspace-analytics-header {
+    margin-bottom: 2.5rem;
 }
 
 .analytics-rollup-subtitle {
-    margin: 0;
-    color: #65717a;
-    font-size: 0.95rem;
-    max-width: 60ch;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    max-width: 800px;
+    margin-top: 0.5rem;
+}
+
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem;
+    color: var(--text-muted);
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+}
+
+.metric-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+}
+
+.metric-card.warning .metric-value {
+    color: var(--danger);
+}
+
+.metric-card.success .metric-value {
+    color: var(--success);
+}
+
+.boards-list-section h2 {
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.boards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
 }
 
 .analytics-rollup-card {
-    border: 1px solid #dce3e8;
-    border-radius: 8px;
-    background: #ffffff;
-    box-shadow: 0 12px 28px rgba(23, 32, 38, 0.06);
-    padding: 1.25rem 1.5rem;
-    display: grid;
-    gap: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    transition: border-color 0.2s;
 }
 
-.analytics-rollup-card h2 {
+.analytics-rollup-card:hover {
+    border-color: var(--primary);
+}
+
+.analytics-rollup-card.empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 3rem;
+}
+
+.board-card-header h3 {
     margin: 0;
     font-size: 1.25rem;
-    color: #1d262d;
+    font-weight: 600;
 }
 
-.analytics-rollup-meta {
-    margin: 0;
-    color: #65717a;
-    font-size: 0.9rem;
+.board-card-stats {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stat.warning-text .stat-value {
+    color: var(--danger);
 }
 
 .analytics-rollup-actions {
-    display: flex;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-    flex-wrap: wrap;
+    margin-top: auto;
 }
 
-.analytics-rollup-actions .primary-action {
-    background: #276ef1;
-    color: #ffffff;
-    padding: 0.55rem 0.95rem;
-    border-radius: 6px;
+.primary-action {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--primary);
+    color: white;
     text-decoration: none;
-    font-weight: 700;
-    font-size: 0.92rem;
-}
-
-.analytics-rollup-actions .secondary-action {
-    color: #276ef1;
-    padding: 0.55rem 0.95rem;
     border-radius: 6px;
-    text-decoration: none;
-    font-weight: 700;
-    font-size: 0.92rem;
-    border: 1px solid #c4d2eb;
-    background: #f5f8ff;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: background-color 0.2s;
 }
 
-.analytics-rollup-actions a:hover,
-.analytics-rollup-actions a:focus-visible {
-    filter: brightness(0.97);
-    outline: none;
+.primary-action:hover {
+    background: var(--primary-hover);
+    color: white;
 }
